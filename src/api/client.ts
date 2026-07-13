@@ -1,6 +1,20 @@
 import * as SecureStore from "expo-secure-store";
+import { jwtDecode } from "jwt-decode";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000";
+
+export interface DecodedToken {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  phoneNumber: string;
+  role: string[];
+  iat: number;
+  exp: number;
+}
 
 export interface ApiResponse<T = any> {
   message: string;
@@ -108,8 +122,58 @@ class ApiClient {
     );
   }
 
+  async patch<T>(
+    endpoint: string,
+    data: any,
+    requiresAuth: boolean = true,
+  ): Promise<T> {
+    return this.request<T>(
+      endpoint,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+      requiresAuth,
+    );
+  }
+
   async delete<T>(endpoint: string, requiresAuth: boolean = true): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE" }, requiresAuth);
+  }
+
+  // Token management
+  async setToken(token: string): Promise<void> {
+    await SecureStore.setItemAsync("accessToken", token);
+  }
+
+  async getToken(): Promise<string | null> {
+    return await SecureStore.getItemAsync("accessToken");
+  }
+
+  async removeToken(): Promise<void> {
+    await SecureStore.deleteItemAsync("accessToken");
+  }
+
+  async decodeToken(): Promise<DecodedToken | null> {
+    const token = await this.getToken();
+    if (!token) return null;
+    try {
+      return jwtDecode<DecodedToken>(token);
+    } catch (error) {
+      console.error("Failed to decode token:", error);
+      return null;
+    }
+  }
+
+  async isTokenValid(): Promise<boolean> {
+    const token = await this.getToken();
+    if (!token) return false;
+    try {
+      const decoded = jwtDecode<DecodedToken>(token);
+      return decoded.exp * 1000 > Date.now();
+    } catch (error) {
+      return false;
+    }
   }
 }
 

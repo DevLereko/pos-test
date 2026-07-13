@@ -3,6 +3,7 @@ import {
   DeviceVerificationRequest,
   DeviceVerificationResponse,
 } from "./client";
+import * as SecureStore from "expo-secure-store";
 
 export interface SignInRequest {
   username: string;
@@ -37,17 +38,58 @@ export interface ResetPasswordRequest {
   newPassword: string;
 }
 
+export interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  phoneNumber: string;
+  businessName?: string;
+  businessAddress?: string;
+  isMerchant: boolean;
+  isActive: boolean;
+  roles: { id: string; name: string }[];
+}
+
+export interface POSDevice {
+  id: string;
+  deviceName: string;
+  deviceId: string;
+  terminalId: string;
+  merchantId: string;
+  printerName: string;
+  paperSize: string;
+  receiptCopies: number;
+  apiUrl: string;
+  soapUrl: string;
+  timeout: number;
+  retryAttempts: number;
+  autoConnect: boolean;
+  autoPrint: boolean;
+  soundEffects: boolean;
+  offlineMode: boolean;
+  biometricAuth: boolean;
+  sessionTimeout: number;
+  isActive: boolean;
+  lastSyncAt: string;
+}
+
 export const authApi = {
   signIn: async (data: SignInRequest): Promise<SignInResponse> => {
     return apiClient.post<SignInResponse>("/auth/sign-in", data, false);
   },
 
   verifyOtp: async (data: VerifyOtpRequest): Promise<VerifyOtpResponse> => {
-    return apiClient.post<VerifyOtpResponse>(
+    const response = await apiClient.post<VerifyOtpResponse>(
       "/auth/verify-login-otp",
       data,
       false,
     );
+    if (response.accessToken) {
+      await SecureStore.setItemAsync("accessToken", response.accessToken);
+    }
+    return response;
   },
 
   forgotPassword: async (
@@ -78,5 +120,42 @@ export const authApi = {
       data,
       false,
     );
+  },
+
+  getCurrentUser: async (): Promise<User> => {
+    const decoded = await apiClient.decodeToken();
+    if (!decoded) throw new Error("No valid token found");
+    return apiClient.get<User>(`/auth/user/${decoded.userId}`);
+  },
+
+  getUserById: async (userId: string): Promise<User> => {
+    return apiClient.get<User>(`/auth/user/${userId}`);
+  },
+
+  updateUser: async (email: string, userData: Partial<User>): Promise<User> => {
+    return apiClient.put<User>("/auth/update-user", { email, userData });
+  },
+
+  getDeviceById: async (deviceId: string): Promise<POSDevice> => {
+    return apiClient.get<POSDevice>(`/pos/devices/${deviceId}`);
+  },
+
+  syncDevice: async (deviceId: string): Promise<POSDevice> => {
+    return apiClient.post<POSDevice>(`/pos/devices/${deviceId}/sync`, {});
+  },
+
+  testPrinter: async (
+    deviceId: string,
+  ): Promise<{ message: string; success: boolean }> => {
+    return apiClient.post<{ message: string; success: boolean }>(
+      `/pos/devices/${deviceId}/test-printer`,
+      {},
+    );
+  },
+
+  logout: async (): Promise<void> => {
+    await SecureStore.deleteItemAsync("accessToken");
+    await SecureStore.deleteItemAsync("userEmail");
+    await SecureStore.deleteItemAsync("userData");
   },
 };

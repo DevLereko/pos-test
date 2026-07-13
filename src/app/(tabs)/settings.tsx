@@ -1,17 +1,16 @@
-import { useState } from "react";
+import { SymbolView } from "expo-symbols";
+import { useState, useEffect } from "react";
 import {
-  Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
-  TextInput,
   View,
+  Switch,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppSymbol } from "@/components/app-symbol";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import {
@@ -20,238 +19,171 @@ import {
   Spacing,
   VODACOM,
 } from "@/constants/theme";
-import { useConfig } from "@/context/config-context";
 import { useTheme } from "@/context/theme-context";
 import { useAuth } from "@/context/auth-context";
-import { bleManager, BLEDevice } from "@/services/ble-manager";
-
-// Edit Modal Component
-function EditModal({
-  visible,
-  onClose,
-  onSave,
-  title,
-  value,
-  label,
-  keyboardType = "default",
-  multiline = false,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSave: (value: string) => void;
-  title: string;
-  value: string;
-  label: string;
-  keyboardType?: "default" | "numeric" | "email-address" | "phone-pad";
-  multiline?: boolean;
-}) {
-  const [inputValue, setInputValue] = useState(value);
-  const { colors } = useTheme();
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View
-          style={[styles.modalContent, { backgroundColor: colors.surface }]}
-        >
-          <ThemedText type="subtitle" style={styles.modalTitle}>
-            {title}
-          </ThemedText>
-
-          <View style={styles.modalField}>
-            <ThemedText type="smallBold" style={styles.modalLabel}>
-              {label}
-            </ThemedText>
-            <TextInput
-              style={[
-                styles.modalInput,
-                {
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.textSecondary,
-                },
-              ]}
-              value={inputValue}
-              onChangeText={setInputValue}
-              keyboardType={keyboardType}
-              multiline={multiline}
-              numberOfLines={multiline ? 3 : 1}
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-
-          <View style={styles.modalActions}>
-            <Pressable
-              style={[styles.modalButton, styles.modalCancelButton]}
-              onPress={onClose}
-            >
-              <ThemedText style={styles.modalCancelText}>Cancel</ThemedText>
-            </Pressable>
-            <Pressable
-              style={[styles.modalButton, styles.modalSaveButton]}
-              onPress={() => {
-                onSave(inputValue);
-                onClose();
-              }}
-            >
-              <ThemedText style={styles.modalSaveText}>Save</ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-type TestStatus = "idle" | "scanning" | "connecting" | "success" | "failed";
+import { useConfig } from "@/context/config-context";
+import { authApi } from "@/api/auth";
 
 export default function SettingsScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const { config, updateConfig } = useConfig();
-  const { logout } = useAuth();
+  const {
+    user,
+    decodedToken,
+    logout,
+    deviceConfig,
+    merchantInfo,
+    refreshUser,
+  } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const [editingField, setEditingField] = useState<{
-    section: string;
-    field: string;
-    value: string;
-    label: string;
-    keyboardType?: "default" | "numeric" | "email-address" | "phone-pad";
-    multiline?: boolean;
-  } | null>(null);
-
-  const [btStatus, setBtStatus] = useState<TestStatus>("idle");
-  const [btMessage, setBtMessage] = useState<string | null>(null);
-  const [scannedDevices, setScannedDevices] = useState<BLEDevice[]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<BLEDevice | null>(null);
-  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState<{
+    connected: boolean;
+    name: string;
+  }>({
+    connected: false,
+    name: "Unknown",
+  });
+  const [testingPrinter, setTestingPrinter] = useState(false);
 
   const contentInset = {
     ...insets,
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
 
-  const handleEdit = (
-    section: string,
-    field: string,
-    value: string,
-    label: string,
-    keyboardType:
-      | "default"
-      | "numeric"
-      | "email-address"
-      | "phone-pad" = "default",
-    multiline: boolean = false,
-  ) => {
-    setEditingField({ section, field, value, label, keyboardType, multiline });
-  };
+  useEffect(() => {
+    loadPrinterStatus();
+  }, [deviceConfig]);
 
-  const handleSaveEdit = (newValue: string) => {
-    if (!editingField) return;
-
-    const { section, field } = editingField;
-    const updates: any = {};
-
-    if (section === "merchant") {
-      updates.merchant = { ...config.merchant, [field]: newValue };
-    } else if (section === "server") {
-      updates.server = { ...config.server, [field]: newValue };
-    } else if (section === "printer") {
-      updates.printer = { ...config.printer, [field]: newValue };
-    }
-
-    updateConfig(updates);
-  };
-
-  const handleLogout = async () => {
-    await logout();
-  };
-
-  const handleResetConfig = () => {
-    Alert.alert(
-      "Reset Configuration",
-      "This will reset all settings to default. Are you sure?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: () => updateConfig({} as any),
-        },
-      ],
-    );
-  };
-
-  const handleScanBluetooth = async () => {
-    setBtStatus("scanning");
-    setBtMessage("Scanning for Bluetooth devices...");
-    setScannedDevices([]);
-    setShowDeviceModal(true);
-
-    try {
-      const devices = await bleManager.startScan();
-      setScannedDevices(devices);
-      setBtStatus("success");
-      setBtMessage(`Found ${devices.length} devices`);
-    } catch {
-      setBtStatus("failed");
-      setBtMessage("Failed to scan for devices");
-      setShowDeviceModal(false);
-    }
-  };
-
-  const handleConnectDevice = async (device: BLEDevice) => {
-    setBtStatus("connecting");
-    setBtMessage(`Connecting to ${device.name}...`);
-    try {
-      const result = await bleManager.connectToDevice(device.id);
-      if (result.success) {
-        setConnectedDevice(result.connectedDevice || device);
-        setBtStatus("success");
-        setBtMessage(`Connected to ${device.name}`);
-        setShowDeviceModal(false);
-      } else {
-        setBtStatus("failed");
-        setBtMessage(result.message);
-      }
-    } catch {
-      setBtStatus("failed");
-      setBtMessage("Connection failed");
+  const loadPrinterStatus = async () => {
+    if (deviceConfig?.id) {
+      // Get printer name from device config
+      setPrinterStatus({
+        connected: true, // This would come from actual BLE connection status
+        name: deviceConfig.printerName || "InnerPrinter",
+      });
     }
   };
 
   const handleTestPrinter = async () => {
-    setBtStatus("scanning");
-    setBtMessage("Testing printer connection...");
+    if (!deviceConfig?.id) {
+      Alert.alert("Error", "No device configuration found");
+      return;
+    }
 
+    setTestingPrinter(true);
     try {
-      const testResult = await bleManager.printTestPage();
-      if (testResult.success) {
-        setBtStatus("success");
-        setBtMessage(testResult.message);
+      const result = await authApi.testPrinter(deviceConfig.id);
+
+      if (result.success) {
+        Alert.alert(
+          "Printer Test Successful",
+          `Printer is working properly.\n\n${result.message}`,
+        );
       } else {
-        setBtStatus("failed");
-        setBtMessage(testResult.message);
+        Alert.alert("Printer Test Failed", result.message);
       }
-    } catch {
-      setBtStatus("failed");
-      setBtMessage("Printer test failed");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to test printer");
+    } finally {
+      setTestingPrinter(false);
     }
   };
 
-  const handleDisconnect = async () => {
-    await bleManager.disconnect();
-    setConnectedDevice(null);
-    setBtStatus("idle");
-    setBtMessage(null);
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          await logout();
+        },
+      },
+    ]);
   };
 
-  const isTesting = btStatus === "scanning" || btStatus === "connecting";
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      await refreshUser();
+      Alert.alert("Success", "Settings refreshed successfully");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to refresh settings");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Preference toggle handler
+  const handlePreferenceToggle = (key: string, value: boolean) => {
+    const preferences = {
+      ...config.preferences,
+      [key]: value,
+    };
+    updateConfig({ preferences });
+
+    if (key === "darkMode") {
+      toggleTheme();
+    }
+  };
+
+  // Get user display name
+  const getUserDisplayName = () => {
+    if (user) {
+      return (
+        `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+        user.username ||
+        "User"
+      );
+    }
+    if (decodedToken) {
+      return (
+        `${decodedToken.firstName || ""} ${decodedToken.lastName || ""}`.trim() ||
+        decodedToken.username ||
+        "User"
+      );
+    }
+    return "User";
+  };
+
+  const getUserEmail = () => {
+    if (user) return user.email;
+    if (decodedToken) return decodedToken.email;
+    return "N/A";
+  };
+
+  const getUserRoles = () => {
+    if (user?.roles) {
+      return user.roles.map((r: any) => r.name);
+    }
+    if (decodedToken?.role) {
+      return decodedToken.role.map((r) => r.replace("ROLE_", ""));
+    }
+    return [];
+  };
+
+  const getMerchantDisplayName = () => {
+    if (merchantInfo) {
+      return merchantInfo.businessName || merchantInfo.name || "N/A";
+    }
+    return "N/A";
+  };
+
+  const getMerchantPhone = () => {
+    if (merchantInfo) {
+      return merchantInfo.phoneNumber || "N/A";
+    }
+    return "N/A";
+  };
+
+  const getMerchantAddress = () => {
+    if (merchantInfo) {
+      return merchantInfo.businessAddress || merchantInfo.location || "N/A";
+    }
+    return "N/A";
+  };
 
   return (
     <ThemedView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -262,25 +194,38 @@ export default function SettingsScreen() {
         <View style={styles.shell}>
           {/* Header */}
           <View style={styles.header}>
-            <ThemedText
-              type="title"
-              style={[styles.headerTitle, { color: colors.text }]}
-            >
-              Settings
-            </ThemedText>
+            <View style={styles.headerRow}>
+              <ThemedText
+                type="title"
+                style={[styles.headerTitle, { color: colors.text }]}
+              >
+                Settings
+              </ThemedText>
+              <Pressable onPress={handleRefresh} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator size="small" color={VODACOM.red} />
+                ) : (
+                  <SymbolView
+                    name={{ ios: "arrow.clockwise", android: "refresh" }}
+                    size={22}
+                    tintColor={VODACOM.red}
+                  />
+                )}
+              </Pressable>
+            </View>
             <ThemedText
               style={[styles.headerSubtitle, { color: colors.textSecondary }]}
             >
-              Configure your POS system
+              Manage your account and POS configuration
             </ThemedText>
           </View>
 
-          {/* Hardware Testing */}
+          {/* User Section */}
           <View style={styles.section}>
             <ThemedText
               style={[styles.sectionTitle, { color: colors.textSecondary }]}
             >
-              Hardware Testing
+              User Information
             </ThemedText>
             <View
               style={[
@@ -288,311 +233,240 @@ export default function SettingsScreen() {
                 { backgroundColor: colors.surface },
               ]}
             >
-              <View style={styles.hardwareRow}>
-                <View style={styles.hardwareLeft}>
-                  <View
-                    style={[
-                      styles.hardwareIcon,
-                      { backgroundColor: `${VODACOM.red}15` },
-                    ]}
+              <View style={styles.userInfo}>
+                <View
+                  style={[
+                    styles.avatar,
+                    { backgroundColor: `${VODACOM.red}15` },
+                  ]}
+                >
+                  <ThemedText
+                    style={[styles.avatarText, { color: VODACOM.red }]}
                   >
-                    <AppSymbol
-                      name={{ ios: "antenna.radiowaves.left.and.right", android: "bluetooth" }}
-                      size={20}
-                      tintColor={VODACOM.red}
-                    />
-                  </View>
-                  <View style={styles.hardwareInfo}>
-                    <ThemedText
-                      style={[styles.hardwareLabel, { color: colors.text }]}
-                    >
-                      Bluetooth
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.hardwareStatus, { color: colors.textSecondary }]}
-                    >
-                      {btStatus === "idle"
-                        ? "Idle"
-                        : btStatus === "scanning"
-                          ? "Scanning..."
-                          : btStatus === "connecting"
-                            ? "Connecting..."
-                            : btMessage || "Ready"}
-                    </ThemedText>
-                    {connectedDevice && (
-                      <ThemedText
-                        style={[styles.connectedDeviceText, { color: VODACOM.green }]}
+                    {getUserDisplayName().charAt(0)}
+                  </ThemedText>
+                </View>
+                <View style={styles.userDetails}>
+                  <ThemedText style={[styles.userName, { color: colors.text }]}>
+                    {getUserDisplayName()}
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.userEmail, { color: colors.textSecondary }]}
+                  >
+                    {getUserEmail()}
+                  </ThemedText>
+                  <View style={styles.userBadges}>
+                    {getUserRoles().map((role: string, index: number) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.badge,
+                          { backgroundColor: `${VODACOM.red}15` },
+                        ]}
                       >
-                        Connected: {connectedDevice.name}
-                      </ThemedText>
-                    )}
+                        <ThemedText
+                          style={[styles.badgeText, { color: VODACOM.red }]}
+                        >
+                          {role}
+                        </ThemedText>
+                      </View>
+                    ))}
                   </View>
                 </View>
-                <Pressable
-                  onPress={handleScanBluetooth}
-                  disabled={isTesting}
-                  style={({ pressed }) => [
-                    styles.testButton,
-                    pressed && styles.pressed,
-                    isTesting && styles.testButtonDisabled,
-                  ]}
-                >
-                  <ThemedText
-                    style={[styles.testButtonText, { color: VODACOM.light }]}
-                  >
-                    {btStatus === "scanning" ? "Scanning..." : "Scan"}
-                  </ThemedText>
-                </Pressable>
               </View>
+            </View>
+          </View>
 
-              <View style={[styles.hardwareDivider, { backgroundColor: isDark ? colors.surfaceStrong : "#F1F5F9" }]} />
-
-              <View style={styles.hardwareRow}>
-                <View style={styles.hardwareLeft}>
-                  <View
+          {/* Merchant Section */}
+          {merchantInfo && (
+            <View style={styles.section}>
+              <ThemedText
+                style={[styles.sectionTitle, { color: colors.textSecondary }]}
+              >
+                Merchant Details
+              </ThemedText>
+              <View
+                style={[
+                  styles.sectionContainer,
+                  { backgroundColor: colors.surface },
+                ]}
+              >
+                <View style={styles.settingItem}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Business Name
+                  </ThemedText>
+                  <ThemedText
                     style={[
-                      styles.hardwareIcon,
-                      { backgroundColor: `${VODACOM.green}15` },
+                      styles.settingValue,
+                      { color: colors.textSecondary },
                     ]}
                   >
-                    <AppSymbol
-                      name={{ ios: "printer.fill", android: "print" }}
-                      size={20}
-                      tintColor={VODACOM.green}
-                    />
-                  </View>
-                  <View style={styles.hardwareInfo}>
-                    <ThemedText
-                      style={[styles.hardwareLabel, { color: colors.text }]}
-                    >
-                      Printer Test
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.hardwareStatus, { color: colors.textSecondary }]}
-                    >
-                      {connectedDevice ? "Ready to print" : "No printer connected"}
-                    </ThemedText>
-                  </View>
-                </View>
-                <Pressable
-                  onPress={handleTestPrinter}
-                  disabled={isTesting || !connectedDevice}
-                  style={({ pressed }) => [
-                    styles.testButton,
-                    pressed && styles.pressed,
-                    (isTesting || !connectedDevice) && styles.testButtonDisabled,
-                  ]}
-                >
-                  <ThemedText
-                    style={[styles.testButtonText, { color: VODACOM.light }]}
-                  >
-                    Test
+                    {getMerchantDisplayName()}
                   </ThemedText>
-                </Pressable>
-              </View>
-
-              {connectedDevice && (
-                <View style={styles.disconnectRow}>
-                  <Pressable
-                    onPress={handleDisconnect}
-                    style={({ pressed }) => [
-                      styles.disconnectButton,
-                      pressed && styles.pressed,
+                </View>
+                <View style={[styles.settingItem, styles.settingBorder]}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Phone
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
                     ]}
                   >
-                    <AppSymbol
-                      name={{ ios: "xmark", android: "close" }}
-                      size={14}
-                      tintColor={VODACOM.red}
-                    />
-                    <ThemedText
-                      style={[styles.disconnectText, { color: VODACOM.red }]}
-                    >
-                      Disconnect
-                    </ThemedText>
-                  </Pressable>
+                    {getMerchantPhone()}
+                  </ThemedText>
                 </View>
-              )}
-            </View>
-          </View>
-
-          {/* Merchant Configuration */}
-          <View style={styles.section}>
-            <ThemedText
-              style={[styles.sectionTitle, { color: colors.textSecondary }]}
-            >
-              Merchant Details
-            </ThemedText>
-            <View
-              style={[
-                styles.sectionContainer,
-                { backgroundColor: colors.surface },
-              ]}
-            >
-              {[
-                {
-                  key: "name",
-                  label: "Business Name",
-                  value: config.merchant.name,
-                  keyboardType: "default",
-                },
-                {
-                  key: "terminalId",
-                  label: "Terminal ID",
-                  value: config.merchant.terminalId,
-                  keyboardType: "default",
-                },
-                {
-                  key: "phoneNumber",
-                  label: "Phone Number",
-                  value: config.merchant.phoneNumber,
-                  keyboardType: "phone-pad",
-                },
-                {
-                  key: "email",
-                  label: "Email Address",
-                  value: config.merchant.email,
-                  keyboardType: "email-address",
-                },
-                {
-                  key: "address",
-                  label: "Business Address",
-                  value: config.merchant.address,
-                  keyboardType: "default",
-                  multiline: true,
-                },
-              ].map((item, index) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() =>
-                    handleEdit(
-                      "merchant",
-                      item.key,
-                      item.value,
-                      item.label,
-                      item.keyboardType as any,
-                      item.multiline || false,
-                    )
-                  }
-                  style={({ pressed }) => [
-                    styles.settingItem,
-                    pressed && styles.pressed,
-                    index < 4 && styles.settingBorder,
-                  ]}
-                >
-                  <View style={styles.settingLeft}>
+                <View style={[styles.settingItem, styles.settingBorder]}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Address
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {getMerchantAddress()}
+                  </ThemedText>
+                </View>
+                {deviceConfig && (
+                  <View style={[styles.settingItem, styles.settingBorder]}>
                     <ThemedText
                       style={[styles.settingLabel, { color: colors.text }]}
                     >
-                      {item.label}
+                      Terminal ID
                     </ThemedText>
-                  </View>
-                  <View style={styles.settingRight}>
                     <ThemedText
                       style={[
                         styles.settingValue,
                         { color: colors.textSecondary },
                       ]}
-                      numberOfLines={1}
                     >
-                      {item.value}
+                      {deviceConfig.terminalId || "N/A"}
                     </ThemedText>
-                    <AppSymbol
-                      name={{ ios: "chevron.right", android: "arrow_forward" }}
-                      size={16}
-                      tintColor={colors.textSecondary}
-                    />
                   </View>
-                </Pressable>
-              ))}
+                )}
+              </View>
             </View>
-          </View>
+          )}
 
-          {/* Server Configuration */}
-          <View style={styles.section}>
-            <ThemedText
-              style={[styles.sectionTitle, { color: colors.textSecondary }]}
-            >
-              Server Configuration
-            </ThemedText>
-            <View
-              style={[
-                styles.sectionContainer,
-                { backgroundColor: colors.surface },
-              ]}
-            >
-              {[
-                {
-                  key: "apiUrl",
-                  label: "API URL",
-                  value: config.server.apiUrl,
-                  keyboardType: "default",
-                },
-                {
-                  key: "soapUrl",
-                  label: "SOAP URL",
-                  value: config.server.soapUrl,
-                  keyboardType: "default",
-                },
-                {
-                  key: "timeout",
-                  label: "Timeout (ms)",
-                  value: String(config.server.timeout),
-                  keyboardType: "numeric",
-                },
-                {
-                  key: "retryAttempts",
-                  label: "Retry Attempts",
-                  value: String(config.server.retryAttempts),
-                  keyboardType: "numeric",
-                },
-              ].map((item, index) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() =>
-                    handleEdit(
-                      "server",
-                      item.key,
-                      item.value,
-                      item.label,
-                      item.keyboardType as any,
-                    )
-                  }
-                  style={({ pressed }) => [
-                    styles.settingItem,
-                    pressed && styles.pressed,
-                    index < 3 && styles.settingBorder,
-                  ]}
-                >
-                  <View style={styles.settingLeft}>
-                    <ThemedText
-                      style={[styles.settingLabel, { color: colors.text }]}
-                    >
-                      {item.label}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.settingRight}>
+          {/* Device Section */}
+          {deviceConfig && (
+            <View style={styles.section}>
+              <ThemedText
+                style={[styles.sectionTitle, { color: colors.textSecondary }]}
+              >
+                Device Configuration
+              </ThemedText>
+              <View
+                style={[
+                  styles.sectionContainer,
+                  { backgroundColor: colors.surface },
+                ]}
+              >
+                <View style={styles.settingItem}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Device Name
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {deviceConfig.deviceName || "N/A"}
+                  </ThemedText>
+                </View>
+                <View style={[styles.settingItem, styles.settingBorder]}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Device ID
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {deviceConfig.deviceId || "N/A"}
+                  </ThemedText>
+                </View>
+                <View style={[styles.settingItem, styles.settingBorder]}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    API URL
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {deviceConfig.apiUrl || "N/A"}
+                  </ThemedText>
+                </View>
+                <View style={[styles.settingItem, styles.settingBorder]}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    SOAP URL
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {deviceConfig.soapUrl || "N/A"}
+                  </ThemedText>
+                </View>
+                <View style={[styles.settingItem, styles.settingBorder]}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Status
+                  </ThemedText>
+                  <View style={styles.statusBadge}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor: deviceConfig.isActive
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
+                      ]}
+                    />
                     <ThemedText
                       style={[
-                        styles.settingValue,
-                        { color: colors.textSecondary },
+                        styles.statusText,
+                        {
+                          color: deviceConfig.isActive
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
                       ]}
-                      numberOfLines={1}
                     >
-                      {item.value}
+                      {deviceConfig.isActive ? "Active" : "Inactive"}
                     </ThemedText>
-                    <AppSymbol
-                      name={{ ios: "chevron.right", android: "arrow_forward" }}
-                      size={16}
-                      tintColor={colors.textSecondary}
-                    />
                   </View>
-                </Pressable>
-              ))}
+                </View>
+              </View>
             </View>
-          </View>
+          )}
 
-          {/* Printer Configuration */}
+          {/* Printer Section */}
           <View style={styles.section}>
             <ThemedText
               style={[styles.sectionTitle, { color: colors.textSecondary }]}
@@ -605,86 +479,81 @@ export default function SettingsScreen() {
                 { backgroundColor: colors.surface },
               ]}
             >
-              {[
-                {
-                  key: "name",
-                  label: "Printer Name",
-                  value: config.printer.name,
-                  keyboardType: "default",
-                },
-                {
-                  key: "paperSize",
-                  label: "Paper Size",
-                  value: config.printer.paperSize,
-                  keyboardType: "default",
-                },
-                {
-                  key: "copies",
-                  label: "Receipt Copies",
-                  value: String(config.printer.copies),
-                  keyboardType: "numeric",
-                },
-              ].map((item, index) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() =>
-                    handleEdit(
-                      "printer",
-                      item.key,
-                      item.value,
-                      item.label,
-                      item.keyboardType as any,
-                    )
-                  }
-                  style={({ pressed }) => [
-                    styles.settingItem,
-                    pressed && styles.pressed,
-                    index < 2 && styles.settingBorder,
-                  ]}
-                >
-                  <View style={styles.settingLeft}>
-                    <ThemedText
-                      style={[styles.settingLabel, { color: colors.text }]}
-                    >
-                      {item.label}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.settingRight}>
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <ThemedText
+                    style={[styles.settingLabel, { color: colors.text }]}
+                  >
+                    Printer Status
+                  </ThemedText>
+                  <View style={styles.printerStatusRow}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor: printerStatus.connected
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
+                      ]}
+                    />
                     <ThemedText
                       style={[
-                        styles.settingValue,
-                        { color: colors.textSecondary },
+                        styles.printerStatusText,
+                        {
+                          color: printerStatus.connected
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
                       ]}
                     >
-                      {item.value}
+                      {printerStatus.connected ? "Connected" : "Disconnected"}
                     </ThemedText>
-                    <AppSymbol
-                      name={{ ios: "chevron.right", android: "arrow_forward" }}
-                      size={16}
-                      tintColor={colors.textSecondary}
-                    />
                   </View>
-                </Pressable>
-              ))}
+                </View>
+                <View style={styles.settingRight}>
+                  <ThemedText
+                    style={[
+                      styles.settingValue,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {printerStatus.name}
+                  </ThemedText>
+                </View>
+              </View>
               <View style={[styles.settingItem, styles.settingBorder]}>
                 <View style={styles.settingLeft}>
                   <ThemedText
                     style={[styles.settingLabel, { color: colors.text }]}
                   >
-                    Auto Connect
+                    Test Printer
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingDescription,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Print a test receipt to verify printer connectivity
                   </ThemedText>
                 </View>
-                <Switch
-                  value={config.printer.autoConnect}
-                  onValueChange={(value) =>
-                    updateConfig({
-                      printer: { ...config.printer, autoConnect: value },
-                    })
-                  }
-                  trackColor={{ false: "#E2E8F0", true: VODACOM.red }}
-                  thumbColor={VODACOM.light}
-                  ios_backgroundColor="#E2E8F0"
-                />
+                <Pressable
+                  onPress={handleTestPrinter}
+                  disabled={testingPrinter}
+                  style={({ pressed }) => [
+                    styles.testButton,
+                    { backgroundColor: VODACOM.red },
+                    pressed && styles.pressed,
+                    testingPrinter && styles.testButtonDisabled,
+                  ]}
+                >
+                  {testingPrinter ? (
+                    <ActivityIndicator size="small" color={VODACOM.light} />
+                  ) : (
+                    <ThemedText style={styles.testButtonText}>Test</ThemedText>
+                  )}
+                </Pressable>
               </View>
             </View>
           </View>
@@ -745,16 +614,9 @@ export default function SettingsScreen() {
                   </View>
                   <Switch
                     value={item.value}
-                    onValueChange={(value) => {
-                      const preferences = {
-                        ...config.preferences,
-                        [item.key]: value,
-                      };
-                      updateConfig({ preferences });
-                      if (item.key === "darkMode") {
-                        toggleTheme();
-                      }
-                    }}
+                    onValueChange={(value) =>
+                      handlePreferenceToggle(item.key, value)
+                    }
                     trackColor={{ false: "#E2E8F0", true: VODACOM.red }}
                     thumbColor={VODACOM.light}
                     ios_backgroundColor="#E2E8F0"
@@ -767,6 +629,14 @@ export default function SettingsScreen() {
                     style={[styles.settingLabel, { color: colors.text }]}
                   >
                     Session Timeout
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.settingDescription,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Auto-logout after inactivity
                   </ThemedText>
                 </View>
                 <View style={styles.settingRight}>
@@ -793,7 +663,7 @@ export default function SettingsScreen() {
                       updateConfig({ preferences });
                     }}
                   >
-                    <AppSymbol
+                    <SymbolView
                       name={{ ios: "chevron.right", android: "arrow_forward" }}
                       size={16}
                       tintColor={colors.textSecondary}
@@ -807,30 +677,13 @@ export default function SettingsScreen() {
           {/* Actions */}
           <View style={styles.actionsContainer}>
             <Pressable
-              onPress={handleResetConfig}
-              style={({ pressed }) => [
-                styles.resetButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <AppSymbol
-                name={{ ios: "arrow.counterclockwise", android: "refresh" }}
-                size={20}
-                tintColor={VODACOM.red}
-              />
-              <ThemedText style={[styles.resetText, { color: VODACOM.red }]}>
-                Reset to Default Settings
-              </ThemedText>
-            </Pressable>
-
-            <Pressable
               onPress={handleLogout}
               style={({ pressed }) => [
                 styles.logoutButton,
                 pressed && styles.pressed,
               ]}
             >
-              <AppSymbol
+              <SymbolView
                 name={{
                   ios: "rectangle.portrait.and.arrow.right",
                   android: "logout",
@@ -856,109 +709,20 @@ export default function SettingsScreen() {
             >
               Vodacom Lesotho
             </ThemedText>
+            {decodedToken && (
+              <ThemedText
+                style={[
+                  styles.footerSubtext,
+                  { color: colors.textSecondary, fontSize: 10 },
+                ]}
+              >
+                User: {decodedToken.username} | Exp:{" "}
+                {new Date(decodedToken.exp * 1000).toLocaleString()}
+              </ThemedText>
+            )}
           </View>
         </View>
       </ScrollView>
-
-      {/* Edit Modal */}
-      {editingField && (
-        <EditModal
-          visible={!!editingField}
-          onClose={() => setEditingField(null)}
-          onSave={handleSaveEdit}
-          title={`Edit ${editingField.label}`}
-          value={editingField.value}
-          label={editingField.label}
-          keyboardType={editingField.keyboardType || "default"}
-          multiline={editingField.multiline || false}
-        />
-      )}
-
-      {/* Device Selection Modal */}
-      <Modal
-        visible={showDeviceModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowDeviceModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[styles.modalContent, { backgroundColor: colors.surface }]}
-          >
-            <ThemedText type="subtitle" style={styles.modalTitle}>
-              Select Bluetooth Device
-            </ThemedText>
-
-            {scannedDevices.length === 0 ? (
-              <View style={styles.emptyDevices}>
-                <AppSymbol
-                  name={{ ios: "antenna.radiowaves.left.and.right", android: "bluetooth" }}
-                  size={40}
-                  tintColor={colors.textSecondary}
-                />
-                <ThemedText
-                  style={[styles.emptyDevicesText, { color: colors.textSecondary }]}
-                >
-                  Scanning for devices...
-                </ThemedText>
-              </View>
-            ) : (
-              <View style={styles.devicesList}>
-                {scannedDevices.map((device) => (
-                  <Pressable
-                    key={device.id}
-                    style={({ pressed }) => [
-                      styles.deviceItem,
-                      pressed && styles.pressed,
-                      { borderBottomColor: isDark ? colors.surfaceStrong : "#F1F5F9" },
-                    ]}
-                    onPress={() => handleConnectDevice(device)}
-                  >
-                    <View
-                      style={[
-                        styles.deviceIcon,
-                        { backgroundColor: `${VODACOM.red}15` },
-                      ]}
-                    >
-                      <AppSymbol
-                        name={{ ios: "printer.fill", android: "print" }}
-                        size={20}
-                        tintColor={VODACOM.red}
-                      />
-                    </View>
-                    <View style={styles.deviceInfo}>
-                      <ThemedText
-                        style={[styles.deviceName, { color: colors.text }]}
-                      >
-                        {device.name}
-                      </ThemedText>
-                      <ThemedText
-                        style={[styles.deviceRssi, { color: colors.textSecondary }]}
-                      >
-                        Signal: {device.rssi} dBm{device.isPaired ? "  •  Paired" : ""}
-                      </ThemedText>
-                    </View>
-                    <AppSymbol
-                      name={{ ios: "chevron.right", android: "arrow_forward" }}
-                      size={16}
-                      tintColor={colors.textSecondary}
-                    />
-                  </Pressable>
-                ))}
-              </View>
-            )}
-
-            <Pressable
-              onPress={() => setShowDeviceModal(false)}
-              style={styles.modalCloseButton}
-            >
-              <ThemedText style={[styles.modalCloseText, { color: VODACOM.red }]}>
-                Close
-              </ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </ThemedView>
   );
 }
@@ -981,6 +745,11 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: Spacing.three,
     gap: 4,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   headerTitle: {
     fontSize: 28,
@@ -1008,73 +777,47 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  hardwareRow: {
+  userInfo: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    gap: 12,
+    padding: Spacing.four,
+    gap: Spacing.three,
   },
-  hardwareLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-  },
-  hardwareIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
   },
-  hardwareInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  hardwareLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  hardwareStatus: {
-    fontSize: 12,
-  },
-  connectedDeviceText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  hardwareDivider: {
-    height: 1,
-    marginHorizontal: Spacing.four,
-  },
-  disconnectRow: {
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    alignItems: "flex-end",
-  },
-  disconnectButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  disconnectText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  testButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  testButtonDisabled: {
-    opacity: 0.5,
-  },
-  testButtonText: {
-    fontSize: 13,
+  avatarText: {
+    fontSize: 28,
     fontWeight: "700",
+  },
+  userDetails: {
+    flex: 1,
+    gap: 4,
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  userEmail: {
+    fontSize: 14,
+  },
+  userBadges: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
   settingItem: {
     flexDirection: "row",
@@ -1089,23 +832,60 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F1F5F9",
   },
   settingLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
     flex: 1,
+    gap: 2,
   },
   settingLabel: {
     fontSize: 16,
+  },
+  settingDescription: {
+    fontSize: 12,
   },
   settingRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    flexShrink: 1,
   },
   settingValue: {
     fontSize: 14,
-    maxWidth: 150,
+  },
+  printerStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+  printerStatusText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  testButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 60,
+    alignItems: "center",
+  },
+  testButtonDisabled: {
+    opacity: 0.6,
+  },
+  testButtonText: {
+    color: VODACOM.light,
+    fontWeight: "600",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: "500",
   },
   pressed: {
     opacity: 0.7,
@@ -1113,21 +893,6 @@ const styles = StyleSheet.create({
   actionsContainer: {
     gap: Spacing.two,
     marginTop: Spacing.two,
-  },
-  resetButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: VODACOM.redLight,
-    backgroundColor: VODACOM.light,
-  },
-  resetText: {
-    fontSize: 16,
-    fontWeight: "600",
   },
   logoutButton: {
     flexDirection: "row",
@@ -1154,109 +919,5 @@ const styles = StyleSheet.create({
   },
   footerSubtext: {
     fontSize: 12,
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "90%",
-    maxWidth: 400,
-    borderRadius: 20,
-    padding: Spacing.four,
-    gap: Spacing.three,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  modalField: {
-    gap: 8,
-  },
-  modalLabel: {
-    fontSize: 14,
-  },
-  modalInput: {
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    minHeight: 48,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: Spacing.two,
-    marginTop: Spacing.two,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalCancelButton: {
-    backgroundColor: "#F1F5F9",
-  },
-  modalCancelText: {
-    color: "#64748B",
-    fontWeight: "600",
-  },
-  modalSaveButton: {
-    backgroundColor: VODACOM.red,
-  },
-  modalSaveText: {
-    color: VODACOM.light,
-    fontWeight: "600",
-  },
-  emptyDevices: {
-    alignItems: "center",
-    paddingVertical: 40,
-    gap: 12,
-  },
-  emptyDevicesText: {
-    fontSize: 14,
-  },
-  devicesList: {
-    gap: 2,
-    maxHeight: 360,
-  },
-  deviceItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: Spacing.two,
-    gap: 12,
-    borderBottomWidth: 1,
-  },
-  deviceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deviceInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  deviceName: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  deviceRssi: {
-    fontSize: 12,
-  },
-  modalCloseButton: {
-    alignItems: "center",
-    paddingVertical: 12,
-    marginTop: Spacing.two,
-  },
-  modalCloseText: {
-    fontSize: 16,
-    fontWeight: "600",
   },
 });
