@@ -10,8 +10,9 @@ interface AuthContextType {
   deviceVerified: boolean;
   deviceConfig: any | null;
   merchantInfo: any | null;
+  pendingEmail: string | null;
   login: (username: string, password: string) => Promise<SignInResponse>;
-  verifyOtp: (otp: string) => Promise<VerifyOtpResponse>;
+  verifyOtp: (email: string, otp: string) => Promise<VerifyOtpResponse>;
   logout: () => Promise<void>;
   resetPassword: (
     email: string,
@@ -19,6 +20,8 @@ interface AuthContextType {
     newPassword: string,
   ) => Promise<{ message: string }>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean }>;
+  setPendingEmail: (email: string | null) => void;
   checkDeviceVerification: () => Promise<boolean>;
 }
 
@@ -33,6 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [deviceVerified, setDeviceVerified] = useState(false);
   const [deviceConfig, setDeviceConfig] = useState<any | null>(null);
   const [merchantInfo, setMerchantInfo] = useState<any | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   const checkDeviceVerification = async () => {
     try {
@@ -63,13 +67,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const verifyOtp = async (otp: string) => {
+  const verifyOtp = async (email: string, otp: string) => {
     setIsLoading(true);
     try {
-      const email = await SecureStore.getItemAsync("userEmail");
-      if (!email) {
-        throw new Error("User email not found");
-      }
       const response = await authApi.verifyOtp({ email, otp });
       // Store access token
       await SecureStore.setItemAsync("accessToken", response.accessToken);
@@ -102,6 +102,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const forgotPassword = async (email: string) => {
     return authApi.forgotPassword({ email });
+  };
+
+  const requestPasswordReset = async (email: string) => {
+    const result = await authApi.forgotPassword({ email });
+    return { success: true };
   };
 
   const resetPassword = async (
@@ -148,11 +153,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     deviceVerified,
     deviceConfig,
     merchantInfo,
+    pendingEmail,
     login,
     verifyOtp,
     logout,
     forgotPassword,
+    requestPasswordReset,
     resetPassword,
+    setPendingEmail,
     checkDeviceVerification,
   };
 
