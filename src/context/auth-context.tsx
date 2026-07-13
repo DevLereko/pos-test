@@ -2,7 +2,13 @@ import { authApi, SignInResponse, VerifyOtpResponse } from "@/api/auth";
 import { apiClient, DecodedToken } from "@/api/client";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 interface AuthContextType {
   user: any | null;
@@ -68,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return decodedToken;
   };
 
-  const rehydrate = async () => {
+  const rehydrate = useCallback(async () => {
     try {
       const config = await SecureStore.getItemAsync("deviceConfig");
       const merchant = await SecureStore.getItemAsync("merchantInfo");
@@ -160,9 +166,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     try {
       const token = await SecureStore.getItemAsync("accessToken");
       if (!token) {
@@ -227,7 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setDecodedToken(null);
       setIsAuthenticated(false);
     }
-  };
+  }, []);
 
   const login = async (username: string, password: string) => {
     setIsLoading(true);
@@ -271,8 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               email: decoded.email,
               phoneNumber: decoded.phoneNumber || "",
               roles:
-                decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
-                [],
+                decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) || [],
               isMerchant:
                 decoded.role?.some((r) => r.includes("MERCHANT")) || false,
             };
@@ -292,8 +297,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             email: decoded.email,
             phoneNumber: decoded.phoneNumber || "",
             roles:
-              decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
-              [],
+              decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) || [],
             isMerchant:
               decoded.role?.some((r) => r.includes("MERCHANT")) || false,
           };
@@ -346,7 +350,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     rehydrate();
-  }, []);
+  }, [rehydrate]);
 
   const value = {
     user,
