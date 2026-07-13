@@ -1,3 +1,4 @@
+// src/app/(tabs)/settings.tsx
 import { SymbolView } from "expo-symbols";
 import { useState, useEffect } from "react";
 import {
@@ -38,34 +39,12 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(false);
-  const [printerStatus, setPrinterStatus] = useState<{
-    connected: boolean;
-    name: string;
-  }>({
-    connected: false,
-    name: "Unknown",
-  });
   const [testingPrinter, setTestingPrinter] = useState(false);
 
   const contentInset = {
     ...insets,
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
-
-  const loadPrinterStatus = async () => {
-    const deviceUuid = deviceConfig?.deviceUuid || deviceConfig?.id;
-    if (deviceUuid) {
-      // Get printer name from device config
-      setPrinterStatus({
-        connected: true, // This would come from actual BLE connection status
-        name: deviceConfig.printerName || "InnerPrinter",
-      });
-    }
-  };
-
-  useEffect(() => {
-    loadPrinterStatus();
-  }, [deviceConfig]);
 
   const handleTestPrinter = async () => {
     if (!deviceConfig?.id) {
@@ -130,60 +109,75 @@ export default function SettingsScreen() {
     }
   };
 
-  // Get user display name
+  // Get user info from user object or decoded token
   const getUserDisplayName = () => {
-    if (user) {
-      return (
-        `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-        user.username ||
-        "User"
-      );
+    if (user?.firstName || user?.lastName) {
+      return `${user.firstName || ""} ${user.lastName || ""}`.trim();
     }
-    if (decodedToken) {
-      return (
-        `${decodedToken.firstName || ""} ${decodedToken.lastName || ""}`.trim() ||
-        decodedToken.username ||
-        "User"
-      );
+    if (decodedToken?.firstName || decodedToken?.lastName) {
+      return `${decodedToken.firstName || ""} ${decodedToken.lastName || ""}`.trim();
     }
-    return "User";
+    return user?.username || decodedToken?.username || "User";
+  };
+
+  const getUserUsername = () => {
+    return user?.username || decodedToken?.username || "N/A";
   };
 
   const getUserEmail = () => {
-    if (user) return user.email;
-    if (decodedToken) return decodedToken.email;
-    return "N/A";
+    return user?.email || decodedToken?.email || "N/A";
   };
 
-  const getUserRoles = () => {
-    if (user?.roles) {
-      return user.roles.map((r: any) => r.name);
-    }
-    if (decodedToken?.role) {
-      return decodedToken.role.map((r) => r.replace("ROLE_", ""));
-    }
-    return [];
+  const getUserPhone = () => {
+    return user?.phoneNumber || decodedToken?.phoneNumber || "N/A";
   };
 
-  const getMerchantDisplayName = () => {
-    if (merchantInfo) {
-      return merchantInfo.businessName || merchantInfo.name || "N/A";
-    }
-    return "N/A";
+  // Get merchant info
+  const getMerchantName = () => {
+    return merchantInfo?.businessName || merchantInfo?.name || "N/A";
   };
 
-  const getMerchantPhone = () => {
-    if (merchantInfo) {
-      return merchantInfo.phoneNumber || "N/A";
-    }
-    return "N/A";
+  const getMerchantCode = () => {
+    return merchantInfo?.code || merchantInfo?.merchantCode || "N/A";
   };
 
-  const getMerchantAddress = () => {
-    if (merchantInfo) {
-      return merchantInfo.businessAddress || merchantInfo.location || "N/A";
-    }
-    return "N/A";
+  const getMerchantLocation = () => {
+    return merchantInfo?.location || merchantInfo?.businessAddress || "N/A";
+  };
+
+  const getMerchantDistrict = () => {
+    return merchantInfo?.district || "N/A";
+  };
+
+  // Get device info
+  const getDeviceName = () => {
+    return deviceConfig?.deviceName || "N/A";
+  };
+
+  const getDeviceId = () => {
+    return deviceConfig?.deviceId || deviceConfig?.deviceUuid || "N/A";
+  };
+
+  const getDeviceModel = () => {
+    return deviceConfig?.deviceModel || "N/A";
+  };
+
+  const getDeviceOS = () => {
+    return deviceConfig?.osVersion || "N/A";
+  };
+
+  const getDeviceStatus = () => {
+    if (deviceConfig?.isActive === undefined) return "Unknown";
+    return deviceConfig.isActive ? "Active" : "Inactive";
+  };
+
+  const getDeviceStatusColor = () => {
+    if (deviceConfig?.isActive === undefined) return VODACOM.greyDark;
+    return deviceConfig.isActive ? VODACOM.green : VODACOM.red;
+  };
+
+  const getTerminalId = () => {
+    return deviceConfig?.terminalId || "N/A";
   };
 
   return (
@@ -217,16 +211,16 @@ export default function SettingsScreen() {
             <ThemedText
               style={[styles.headerSubtitle, { color: colors.textSecondary }]}
             >
-              Manage your account and POS configuration
+              Account & device configuration
             </ThemedText>
           </View>
 
-          {/* User Section */}
+          {/* User Information - Compact */}
           <View style={styles.section}>
             <ThemedText
               style={[styles.sectionTitle, { color: colors.textSecondary }]}
             >
-              User Information
+              User
             </ThemedText>
             <View
               style={[
@@ -234,57 +228,80 @@ export default function SettingsScreen() {
                 { backgroundColor: colors.surface },
               ]}
             >
-              <View style={styles.userInfo}>
+              <View style={styles.userInfoCompact}>
                 <View
                   style={[
-                    styles.avatar,
+                    styles.avatarSmall,
                     { backgroundColor: `${VODACOM.red}15` },
                   ]}
                 >
                   <ThemedText
-                    style={[styles.avatarText, { color: VODACOM.red }]}
+                    style={[styles.avatarTextSmall, { color: VODACOM.red }]}
                   >
-                    {getUserDisplayName().charAt(0)}
+                    {getUserDisplayName().charAt(0).toUpperCase()}
                   </ThemedText>
                 </View>
-                <View style={styles.userDetails}>
+                <View style={styles.userDetailsCompact}>
                   <ThemedText style={[styles.userName, { color: colors.text }]}>
                     {getUserDisplayName()}
                   </ThemedText>
-                  <ThemedText
-                    style={[styles.userEmail, { color: colors.textSecondary }]}
-                  >
-                    {getUserEmail()}
-                  </ThemedText>
-                  <View style={styles.userBadges}>
-                    {getUserRoles().map((role: string, index: number) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.badge,
-                          { backgroundColor: `${VODACOM.red}15` },
-                        ]}
-                      >
-                        <ThemedText
-                          style={[styles.badgeText, { color: VODACOM.red }]}
-                        >
-                          {role}
-                        </ThemedText>
-                      </View>
-                    ))}
+                  <View style={styles.userInfoRow}>
+                    <SymbolView
+                      name={{ ios: "person.fill", android: "person" }}
+                      size={12}
+                      tintColor={colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.userInfoText,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      @{getUserUsername()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.userInfoRow}>
+                    <SymbolView
+                      name={{ ios: "envelope.fill", android: "email" }}
+                      size={12}
+                      tintColor={colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.userInfoText,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {getUserEmail()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.userInfoRow}>
+                    <SymbolView
+                      name={{ ios: "phone.fill", android: "phone" }}
+                      size={12}
+                      tintColor={colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.userInfoText,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {getUserPhone()}
+                    </ThemedText>
                   </View>
                 </View>
               </View>
             </View>
           </View>
 
-          {/* Merchant Section */}
+          {/* Merchant Information - Compact */}
           {merchantInfo && (
             <View style={styles.section}>
               <ThemedText
                 style={[styles.sectionTitle, { color: colors.textSecondary }]}
               >
-                Merchant Details
+                Merchant
               </ThemedText>
               <View
                 style={[
@@ -292,79 +309,81 @@ export default function SettingsScreen() {
                   { backgroundColor: colors.surface },
                 ]}
               >
-                <View style={styles.settingItem}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Business Name
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {getMerchantDisplayName()}
-                  </ThemedText>
-                </View>
-                <View style={[styles.settingItem, styles.settingBorder]}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Phone
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {getMerchantPhone()}
-                  </ThemedText>
-                </View>
-                <View style={[styles.settingItem, styles.settingBorder]}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Address
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {getMerchantAddress()}
-                  </ThemedText>
-                </View>
-                {deviceConfig && (
-                  <View style={[styles.settingItem, styles.settingBorder]}>
-                    <ThemedText
-                      style={[styles.settingLabel, { color: colors.text }]}
-                    >
-                      Terminal ID
-                    </ThemedText>
+                <View style={styles.infoGrid}>
+                  <View style={styles.infoGridItem}>
                     <ThemedText
                       style={[
-                        styles.settingValue,
+                        styles.infoGridLabel,
                         { color: colors.textSecondary },
                       ]}
                     >
-                      {deviceConfig.terminalId || "N/A"}
+                      Name
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {getMerchantName()}
                     </ThemedText>
                   </View>
-                )}
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Code
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                    >
+                      {getMerchantCode()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Location
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {getMerchantLocation()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      District
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                    >
+                      {getMerchantDistrict()}
+                    </ThemedText>
+                  </View>
+                </View>
               </View>
             </View>
           )}
 
-          {/* Device Section */}
+          {/* Device Information - Compact */}
           {deviceConfig && (
             <View style={styles.section}>
               <ThemedText
                 style={[styles.sectionTitle, { color: colors.textSecondary }]}
               >
-                Device Configuration
+                Device
               </ThemedText>
               <View
                 style={[
@@ -372,95 +391,111 @@ export default function SettingsScreen() {
                   { backgroundColor: colors.surface },
                 ]}
               >
-                <View style={styles.settingItem}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Device Name
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {deviceConfig.deviceName || "N/A"}
-                  </ThemedText>
-                </View>
-                <View style={[styles.settingItem, styles.settingBorder]}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Device ID
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {deviceConfig.deviceId || "N/A"}
-                  </ThemedText>
-                </View>
-                <View style={[styles.settingItem, styles.settingBorder]}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    API URL
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {deviceConfig.apiUrl || "N/A"}
-                  </ThemedText>
-                </View>
-                <View style={[styles.settingItem, styles.settingBorder]}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    SOAP URL
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {deviceConfig.soapUrl || "N/A"}
-                  </ThemedText>
-                </View>
-                <View style={[styles.settingItem, styles.settingBorder]}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Status
-                  </ThemedText>
-                  <View style={styles.statusBadge}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        {
-                          backgroundColor: deviceConfig.isActive
-                            ? VODACOM.green
-                            : VODACOM.red,
-                        },
-                      ]}
-                    />
+                <View style={styles.infoGrid}>
+                  <View style={styles.infoGridItem}>
                     <ThemedText
                       style={[
-                        styles.statusText,
-                        {
-                          color: deviceConfig.isActive
-                            ? VODACOM.green
-                            : VODACOM.red,
-                        },
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
                       ]}
                     >
-                      {deviceConfig.isActive ? "Active" : "Inactive"}
+                      Name
                     </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {getDeviceName()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      ID
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {getDeviceId()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Model
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {getDeviceModel()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      OS
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {getDeviceOS()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Terminal
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.infoGridValue, { color: colors.text }]}
+                    >
+                      {getTerminalId()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.infoGridItem}>
+                    <ThemedText
+                      style={[
+                        styles.infoGridLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Status
+                    </ThemedText>
+                    <View style={styles.statusBadge}>
+                      <View
+                        style={[
+                          styles.statusDotSmall,
+                          { backgroundColor: getDeviceStatusColor() },
+                        ]}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.statusTextSmall,
+                          { color: getDeviceStatusColor() },
+                        ]}
+                      >
+                        {getDeviceStatus()}
+                      </ThemedText>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -472,7 +507,7 @@ export default function SettingsScreen() {
             <ThemedText
               style={[styles.sectionTitle, { color: colors.textSecondary }]}
             >
-              Printer Settings
+              Printer
             </ThemedText>
             <View
               style={[
@@ -485,49 +520,6 @@ export default function SettingsScreen() {
                   <ThemedText
                     style={[styles.settingLabel, { color: colors.text }]}
                   >
-                    Printer Status
-                  </ThemedText>
-                  <View style={styles.printerStatusRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        {
-                          backgroundColor: printerStatus.connected
-                            ? VODACOM.green
-                            : VODACOM.red,
-                        },
-                      ]}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.printerStatusText,
-                        {
-                          color: printerStatus.connected
-                            ? VODACOM.green
-                            : VODACOM.red,
-                        },
-                      ]}
-                    >
-                      {printerStatus.connected ? "Connected" : "Disconnected"}
-                    </ThemedText>
-                  </View>
-                </View>
-                <View style={styles.settingRight}>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {printerStatus.name}
-                  </ThemedText>
-                </View>
-              </View>
-              <View style={[styles.settingItem, styles.settingBorder]}>
-                <View style={styles.settingLeft}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
                     Test Printer
                   </ThemedText>
                   <ThemedText
@@ -536,7 +528,7 @@ export default function SettingsScreen() {
                       { color: colors.textSecondary },
                     ]}
                   >
-                    Print a test receipt to verify printer connectivity
+                    Print a test receipt to verify connectivity
                   </ThemedText>
                 </View>
                 <Pressable
@@ -595,7 +587,7 @@ export default function SettingsScreen() {
                 },
                 {
                   key: "biometricAuth",
-                  label: "Biometric Authentication",
+                  label: "Biometric Auth",
                   value: config.preferences.biometricAuth,
                 },
               ].map((item, index) => (
@@ -630,14 +622,6 @@ export default function SettingsScreen() {
                     style={[styles.settingLabel, { color: colors.text }]}
                   >
                     Session Timeout
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.settingDescription,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    Auto-logout after inactivity
                   </ThemedText>
                 </View>
                 <View style={styles.settingRight}>
@@ -710,17 +694,6 @@ export default function SettingsScreen() {
             >
               Vodacom Lesotho
             </ThemedText>
-            {decodedToken && (
-              <ThemedText
-                style={[
-                  styles.footerSubtext,
-                  { color: colors.textSecondary, fontSize: 10 },
-                ]}
-              >
-                User: {decodedToken.username} | Exp:{" "}
-                {new Date(decodedToken.exp * 1000).toLocaleString()}
-              </ThemedText>
-            )}
           </View>
         </View>
       </ScrollView>
@@ -763,14 +736,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     paddingHorizontal: 4,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   sectionContainer: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -778,55 +751,68 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  userInfo: {
+  // User Compact
+  userInfoCompact: {
     flexDirection: "row",
     alignItems: "center",
-    padding: Spacing.four,
-    gap: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.two,
   },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  avatarSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: {
-    fontSize: 28,
+  avatarTextSmall: {
+    fontSize: 20,
     fontWeight: "700",
   },
-  userDetails: {
+  userDetailsCompact: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   userName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
   },
-  userEmail: {
-    fontSize: 14,
-  },
-  userBadges: {
+  userInfoRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 6,
+  },
+  userInfoText: {
+    fontSize: 13,
+  },
+  // Info Grid
+  infoGrid: {
+    flexDirection: "row",
     flexWrap: "wrap",
+    padding: Spacing.three,
+    gap: 8,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
+  infoGridItem: {
+    width: "48%",
+    gap: 2,
   },
-  badgeText: {
+  infoGridLabel: {
     fontSize: 11,
-    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
+  infoGridValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  // Setting Items
   settingItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    minHeight: 52,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    minHeight: 44,
   },
   settingBorder: {
     borderBottomWidth: 1,
@@ -834,10 +820,10 @@ const styles = StyleSheet.create({
   },
   settingLeft: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   settingLabel: {
-    fontSize: 16,
+    fontSize: 15,
   },
   settingDescription: {
     fontSize: 12,
@@ -845,26 +831,32 @@ const styles = StyleSheet.create({
   settingRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   settingValue: {
     fontSize: 14,
   },
-  printerStatusRow: {
+  // Status
+  statusBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 2,
   },
-  printerStatusText: {
-    fontSize: 12,
+  statusDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusTextSmall: {
+    fontSize: 13,
     fontWeight: "500",
   },
+  // Test Button
   testButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     borderRadius: 8,
-    minWidth: 60,
+    minWidth: 50,
     alignItems: "center",
   },
   testButtonDisabled: {
@@ -873,24 +865,12 @@ const styles = StyleSheet.create({
   testButtonText: {
     color: VODACOM.light,
     fontWeight: "600",
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 13,
   },
   pressed: {
     opacity: 0.7,
   },
+  // Actions
   actionsContainer: {
     gap: Spacing.two,
     marginTop: Spacing.two,
@@ -900,8 +880,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: VODACOM.redLight,
     backgroundColor: VODACOM.light,
@@ -910,15 +890,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  // Footer
   footer: {
     alignItems: "center",
     paddingTop: Spacing.three,
-    gap: 4,
+    gap: 2,
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
   },
   footerSubtext: {
-    fontSize: 12,
+    fontSize: 11,
   },
 });
