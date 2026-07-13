@@ -1,0 +1,168 @@
+import { authApi, SignInResponse, VerifyOtpResponse } from "@/api/auth";
+import { router } from "expo-router";
+import * as SecureStore from "expo-secure-store";
+import React, { createContext, useContext, useEffect, useState } from "react";
+
+interface AuthContextType {
+  user: any | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  deviceVerified: boolean;
+  deviceConfig: any | null;
+  merchantInfo: any | null;
+  login: (username: string, password: string) => Promise<SignInResponse>;
+  verifyOtp: (otp: string) => Promise<VerifyOtpResponse>;
+  logout: () => Promise<void>;
+  resetPassword: (
+    email: string,
+    otp: string,
+    newPassword: string,
+  ) => Promise<{ message: string }>;
+  forgotPassword: (email: string) => Promise<{ message: string }>;
+  checkDeviceVerification: () => Promise<boolean>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [user, setUser] = useState<any | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [deviceVerified, setDeviceVerified] = useState(false);
+  const [deviceConfig, setDeviceConfig] = useState<any | null>(null);
+  const [merchantInfo, setMerchantInfo] = useState<any | null>(null);
+
+  const checkDeviceVerification = async () => {
+    try {
+      const config = await SecureStore.getItemAsync("deviceConfig");
+      if (config) {
+        setDeviceConfig(JSON.parse(config));
+        setDeviceVerified(true);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Failed to check device verification:", error);
+      return false;
+    }
+  };
+
+  const login = async (username: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const response = await authApi.signIn({ username, password });
+      // Store user email for OTP verification
+      await SecureStore.setItemAsync("userEmail", response.userEmail);
+      return response;
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyOtp = async (otp: string) => {
+    setIsLoading(true);
+    try {
+      const email = await SecureStore.getItemAsync("userEmail");
+      if (!email) {
+        throw new Error("User email not found");
+      }
+      const response = await authApi.verifyOtp({ email, otp });
+      // Store access token
+      await SecureStore.setItemAsync("accessToken", response.accessToken);
+      setUser(response);
+      setIsAuthenticated(true);
+      // Navigate to main app
+      router.replace("/(tabs)");
+      return response;
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    setIsLoading(true);
+    try {
+      await SecureStore.deleteItemAsync("accessToken");
+      await SecureStore.deleteItemAsync("userEmail");
+      setUser(null);
+      setIsAuthenticated(false);
+      router.replace("/(auth)/verify-device");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const forgotPassword = async (email: string) => {
+    return authApi.forgotPassword({ email });
+  };
+
+  const resetPassword = async (
+    email: string,
+    otp: string,
+    newPassword: string,
+  ) => {
+    return authApi.resetPassword({ email, otp, newPassword });
+  };
+
+  // Check device verification and token on mount
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const verified = await checkDeviceVerification();
+        if (!verified) {
+          router.replace("/(auth)/verify-device");
+          setIsLoading(false);
+          return;
+        }
+        // Check if we have a valid token
+        const token = await SecureStore.getItemAsync("accessToken");
+        if (token) {
+          // Token exists, try to get user info
+          // For now, just set as authenticated
+          setIsAuthenticated(true);
+        } else {
+          router.replace("/(auth)/login");
+        }
+      } catch (error) {
+        console.error("Auth initialization failed:", error);
+        router.replace("/(auth)/verify-device");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    initAuth();
+  }, []);
+
+  const value = {
+    user,
+    isAuthenticated,
+    isLoading,
+    deviceVerified,
+    deviceConfig,
+    merchantInfo,
+    login,
+    verifyOtp,
+    logout,
+    forgotPassword,
+    resetPassword,
+    checkDeviceVerification,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};
