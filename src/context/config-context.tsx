@@ -85,12 +85,7 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [isLoading, setIsLoading] = useState(true);
-  const { toggleTheme, setTheme } = useTheme();
-
-  // Load config from storage on mount
-  useEffect(() => {
-    loadConfig();
-  }, []);
+  const { setTheme } = useTheme();
 
   const loadConfig = async () => {
     try {
@@ -109,6 +104,11 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsLoading(false);
     }
   };
+
+  // Load config from storage on mount
+  useEffect(() => {
+    loadConfig();
+  }, []);
 
   const saveConfig = async () => {
     try {

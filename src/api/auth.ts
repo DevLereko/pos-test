@@ -38,18 +38,15 @@ export interface ResetPasswordRequest {
   newPassword: string;
 }
 
-export interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  username: string;
-  email: string;
-  phoneNumber: string;
+export interface MerchantDevice {
+  deviceUuid: string;
+  merchantId: string;
+  merchantName?: string;
   businessName?: string;
   businessAddress?: string;
-  isMerchant: boolean;
-  isActive: boolean;
-  roles: { id: string; name: string }[];
+  terminalId: string;
+  phoneNumber?: string;
+  email?: string;
 }
 
 export interface POSDevice {
@@ -73,6 +70,26 @@ export interface POSDevice {
   sessionTimeout: number;
   isActive: boolean;
   lastSyncAt: string;
+}
+
+export interface GetUserResponse {
+  message: string;
+  user: User;
+}
+
+export interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  username?: string;
+  email?: string;
+  phoneNumber?: string;
+  businessName?: string;
+  businessAddress?: string;
+  isActive: boolean;
+  roles: { id: string; name: string }[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const authApi = {
@@ -125,11 +142,16 @@ export const authApi = {
   getCurrentUser: async (): Promise<User> => {
     const decoded = await apiClient.decodeToken();
     if (!decoded) throw new Error("No valid token found");
-    return apiClient.get<User>(`/auth/user/${decoded.userId}`);
+    return authApi.getUserById(decoded.userId);
   },
 
   getUserById: async (userId: string): Promise<User> => {
-    return apiClient.get<User>(`/auth/user/${userId}`);
+    const response = await apiClient.get<GetUserResponse>(`/auth/user/${userId}`, true);
+    return response.user;
+  },
+
+  getMerchantDevice: async (merchantId: string): Promise<MerchantDevice> => {
+    return apiClient.get<MerchantDevice>(`/portal/merchants/${merchantId}/device`, true);
   },
 
   updateUser: async (email: string, userData: Partial<User>): Promise<User> => {

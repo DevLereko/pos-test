@@ -27,6 +27,7 @@ interface AuthContextType {
   checkDeviceVerification: () => Promise<boolean>;
   refreshUser: () => Promise<void>;
   getDecodedToken: () => DecodedToken | null;
+  rehydrate: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -67,6 +68,100 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return decodedToken;
   };
 
+  const rehydrate = async () => {
+    try {
+      const config = await SecureStore.getItemAsync("deviceConfig");
+      const merchant = await SecureStore.getItemAsync("merchantInfo");
+
+      if (config) {
+        setDeviceConfig(JSON.parse(config));
+        setDeviceVerified(true);
+        if (merchant) {
+          setMerchantInfo(JSON.parse(merchant));
+        }
+      } else {
+        setDeviceVerified(false);
+      }
+
+      const token = await SecureStore.getItemAsync("accessToken");
+      if (token) {
+        const isValid = await apiClient.isTokenValid();
+        if (isValid) {
+          const decoded = await apiClient.decodeToken();
+          if (decoded) {
+            setDecodedToken(decoded);
+
+            try {
+              const userData = await authApi.getUserById(decoded.userId);
+              if (userData) {
+                setUser(userData);
+              } else {
+                const storedUserData = await SecureStore.getItemAsync("userData");
+                if (storedUserData) {
+                  setUser(JSON.parse(storedUserData));
+                } else {
+                  setUser({
+                    id: decoded.userId,
+                    firstName: decoded.firstName || "",
+                    lastName: decoded.lastName || "",
+                    username: decoded.username,
+                    email: decoded.email,
+                    phoneNumber: decoded.phoneNumber || "",
+                    roles:
+                      decoded.role?.map((r) => ({
+                        name: r.replace("ROLE_", ""),
+                      })) || [],
+                    isMerchant:
+                      decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+                  });
+                }
+              }
+            } catch (apiError) {
+              console.warn(
+                "API call failed, using decoded token:",
+                apiError,
+              );
+              const storedUserData = await SecureStore.getItemAsync("userData");
+              if (storedUserData) {
+                setUser(JSON.parse(storedUserData));
+              } else {
+                setUser({
+                  id: decoded.userId,
+                  firstName: decoded.firstName || "",
+                  lastName: decoded.lastName || "",
+                  username: decoded.username,
+                  email: decoded.email,
+                  phoneNumber: decoded.phoneNumber || "",
+                  roles:
+                    decoded.role?.map((r) => ({
+                      name: r.replace("ROLE_", ""),
+                    })) || [],
+                  isMerchant:
+                    decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+                });
+              }
+            }
+
+            setIsAuthenticated(true);
+            return;
+          }
+        } else {
+          await SecureStore.deleteItemAsync("accessToken");
+        }
+      }
+
+      setIsAuthenticated(false);
+      setUser(null);
+      setDecodedToken(null);
+    } catch (error) {
+      setIsAuthenticated(false);
+      setUser(null);
+      setDecodedToken(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const refreshUser = async () => {
     try {
       const token = await SecureStore.getItemAsync("accessToken");
@@ -77,27 +172,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      // Decode the token
       const decoded = await apiClient.decodeToken();
       if (decoded) {
         setDecodedToken(decoded);
 
-        // Get full user details from API using userId from token
         try {
           const userData = await authApi.getUserById(decoded.userId);
-          setUser(userData);
+          if (userData) {
+            setUser(userData);
+            await SecureStore.setItemAsync("userData", JSON.stringify(userData));
+          } else {
+            const fallbackUser = {
+              id: decoded.userId,
+              firstName: decoded.firstName || "",
+              lastName: decoded.lastName || "",
+              username: decoded.username,
+              email: decoded.email,
+              phoneNumber: decoded.phoneNumber || "",
+              roles:
+                decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
+                [],
+              isMerchant:
+                decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+            };
+            setUser(fallbackUser);
+            await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
+          }
         } catch (error) {
-          console.error("Failed to get user details:", error);
-          // Fallback: use decoded token data
-          setUser({
+          console.warn(
+            "Failed to get user details, using decoded token:",
+            error,
+          );
+          const fallbackUser = {
             id: decoded.userId,
-            firstName: decoded.firstName,
-            lastName: decoded.lastName,
+            firstName: decoded.firstName || "",
+            lastName: decoded.lastName || "",
             username: decoded.username,
             email: decoded.email,
-            phoneNumber: decoded.phoneNumber,
-            roles: decoded.role.map((r) => ({ name: r.replace("ROLE_", "") })),
-          });
+            phoneNumber: decoded.phoneNumber || "",
+            roles:
+              decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
+              [],
+            isMerchant:
+              decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+          };
+          setUser(fallbackUser);
+          await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
         }
         setIsAuthenticated(true);
       }
@@ -113,7 +233,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(true);
     try {
       const response = await authApi.signIn({ username, password });
-      // Store user email for OTP verification
       await SecureStore.setItemAsync("userEmail", response.userEmail);
       setPendingEmail(response.userEmail);
       return response;
@@ -129,32 +248,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const response = await authApi.verifyOtp({ email, otp });
 
-      // Store access token (already stored in authApi.verifyOtp)
-      // Decode token and get user info
       const decoded = await apiClient.decodeToken();
       if (decoded) {
         setDecodedToken(decoded);
 
-        // Get full user details
         try {
           const userData = await authApi.getUserById(decoded.userId);
-          setUser(userData);
+          if (userData) {
+            setUser(userData);
+            await SecureStore.setItemAsync("userData", JSON.stringify(userData));
+            console.log(
+              "User loaded from API after OTP:",
+              userData.firstName,
+              userData.lastName,
+            );
+          } else {
+            const fallbackUser = {
+              id: decoded.userId,
+              firstName: decoded.firstName || "",
+              lastName: decoded.lastName || "",
+              username: decoded.username,
+              email: decoded.email,
+              phoneNumber: decoded.phoneNumber || "",
+              roles:
+                decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
+                [],
+              isMerchant:
+                decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+            };
+            setUser(fallbackUser);
+            await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
+          }
         } catch (error) {
-          console.error("Failed to get user details:", error);
-          setUser({
+          console.warn(
+            "Failed to get user details after OTP, using decoded token:",
+            error,
+          );
+          const fallbackUser = {
             id: decoded.userId,
-            firstName: decoded.firstName,
-            lastName: decoded.lastName,
+            firstName: decoded.firstName || "",
+            lastName: decoded.lastName || "",
             username: decoded.username,
             email: decoded.email,
-            phoneNumber: decoded.phoneNumber,
-            roles: decoded.role.map((r) => ({ name: r.replace("ROLE_", "") })),
-          });
+            phoneNumber: decoded.phoneNumber || "",
+            roles:
+              decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
+              [],
+            isMerchant:
+              decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+          };
+          setUser(fallbackUser);
+          await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
         }
       }
 
       setIsAuthenticated(true);
-      // Navigate to main app (dashboard)
       router.replace("/(tabs)");
       return response;
     } catch (error) {
@@ -167,13 +315,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = async () => {
     setIsLoading(true);
     try {
-      await SecureStore.deleteItemAsync("accessToken");
-      await SecureStore.deleteItemAsync("userEmail");
-      await SecureStore.deleteItemAsync("userData");
+      await authApi.logout();
       setUser(null);
       setDecodedToken(null);
       setIsAuthenticated(false);
-      router.replace("/(auth)/verify-device");
+      router.replace("/(auth)/login");
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {
@@ -198,32 +344,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return authApi.resetPassword({ email, otp, newPassword });
   };
 
-  // Check device verification and token on mount
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const verified = await checkDeviceVerification();
-        if (!verified) {
-          router.replace("/(auth)/verify-device");
-          setIsLoading(false);
-          return;
-        }
-
-        // Check if we have a valid token
-        const token = await SecureStore.getItemAsync("accessToken");
-        if (token) {
-          await refreshUser();
-        } else {
-          router.replace("/(auth)/login");
-        }
-      } catch (error) {
-        console.error("Auth initialization failed:", error);
-        router.replace("/(auth)/verify-device");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    initAuth();
+    rehydrate();
   }, []);
 
   const value = {
@@ -245,6 +367,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     checkDeviceVerification,
     refreshUser,
     getDecodedToken,
+    rehydrate,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

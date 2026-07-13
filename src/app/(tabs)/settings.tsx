@@ -52,12 +52,9 @@ export default function SettingsScreen() {
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
 
-  useEffect(() => {
-    loadPrinterStatus();
-  }, [deviceConfig]);
-
   const loadPrinterStatus = async () => {
-    if (deviceConfig?.id) {
+    const deviceUuid = deviceConfig?.deviceUuid || deviceConfig?.id;
+    if (deviceUuid) {
       // Get printer name from device config
       setPrinterStatus({
         connected: true, // This would come from actual BLE connection status
@@ -65,6 +62,10 @@ export default function SettingsScreen() {
       });
     }
   };
+
+  useEffect(() => {
+    loadPrinterStatus();
+  }, [deviceConfig]);
 
   const handleTestPrinter = async () => {
     if (!deviceConfig?.id) {

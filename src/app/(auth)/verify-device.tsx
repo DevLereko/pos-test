@@ -21,10 +21,6 @@ export default function VerifyDeviceScreen() {
   const [merchantInfo, setMerchantInfo] = useState<any>(null);
   const [deviceDetails, setDeviceDetails] = useState<any>(null);
 
-  useEffect(() => {
-    verifyDevice();
-  }, []);
-
   const verifyDevice = async () => {
     try {
       setIsLoading(true);
@@ -70,8 +66,17 @@ export default function VerifyDeviceScreen() {
       };
 
       setDeviceInfo(deviceConfig);
-      setMerchantInfo({ merchantId: response.merchantId });
       setDeviceVerified(true);
+
+      // Fetch merchant info
+      try {
+        const merchant = await authApi.getMerchantDevice(response.merchantId);
+        setMerchantInfo(merchant);
+        await SecureStore.setItemAsync("merchantInfo", JSON.stringify(merchant));
+      } catch (merchantError) {
+        console.warn("Failed to fetch merchant info:", merchantError);
+        setMerchantInfo({ merchantId: response.merchantId });
+      }
 
       // Store device config locally
       await SecureStore.setItemAsync(
@@ -93,14 +98,16 @@ export default function VerifyDeviceScreen() {
     }
   };
 
+  useEffect(() => {
+    verifyDevice();
+  }, []);
+
   const handleRetry = () => {
     verifyDevice();
   };
 
   return (
-    <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
         {/* Logo */}
         <View style={styles.logoContainer}>
