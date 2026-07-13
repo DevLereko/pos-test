@@ -22,20 +22,20 @@ export default function LoginScreen() {
   const { login, isLoading, setPendingEmail } = useAuth();
   const router = useRouter();
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Error", "Please enter both email and password");
+    if (!username.trim() || !password.trim()) {
+      Alert.alert("Error", "Please enter both username and password");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await login(email.trim(), password);
+      await login(username.trim(), password);
       router.push("/(auth)/otp?mode=login");
     } catch (error: any) {
       Alert.alert("Login Failed", error.message || "Something went wrong");
@@ -45,7 +45,7 @@ export default function LoginScreen() {
   };
 
   const handleForgotPassword = () => {
-    setPendingEmail(email.trim());
+    setPendingEmail(username.trim());
     router.push("/(auth)/forgot-password");
   };
 
@@ -84,7 +84,7 @@ export default function LoginScreen() {
         >
           <View style={styles.fieldGroup}>
             <ThemedText type="smallBold" style={styles.label}>
-              Email Address
+              Username
             </ThemedText>
             <TextInput
               style={[
@@ -94,11 +94,10 @@ export default function LoginScreen() {
                   color: colors.text,
                 },
               ]}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="merchant@business.co.ls"
+              value={username}
+              onChangeText={setUsername}
+              placeholder="username"
               placeholderTextColor={colors.textSecondary}
-              keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               editable={!isDisabled}
@@ -192,15 +191,6 @@ export default function LoginScreen() {
               </ThemedText>
             </Pressable>
           </View>
-        </View>
-
-        <View style={styles.footer}>
-          <ThemedText
-            type="small"
-            style={[styles.footerText, { color: colors.textSecondary }]}
-          >
-            Mock credentials pre-filled for testing
-          </ThemedText>
         </View>
       </ScrollView>
     </ThemedView>

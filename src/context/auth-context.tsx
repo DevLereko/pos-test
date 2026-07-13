@@ -59,6 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await authApi.signIn({ username, password });
       // Store user email for OTP verification
       await SecureStore.setItemAsync("userEmail", response.userEmail);
+      setPendingEmail(response.userEmail);
       return response;
     } catch (error) {
       throw error;
@@ -73,9 +74,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await authApi.verifyOtp({ email, otp });
       // Store access token
       await SecureStore.setItemAsync("accessToken", response.accessToken);
-      setUser(response);
+      // Store user info with roles
+      const userData = {
+        accessToken: response.accessToken,
+        roles: response.roles,
+        email,
+      };
+      await SecureStore.setItemAsync("userData", JSON.stringify(userData));
+      setUser(userData);
       setIsAuthenticated(true);
-      // Navigate to main app
+      // Navigate to main app (dashboard)
       router.replace("/(tabs)");
       return response;
     } catch (error) {
@@ -90,6 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       await SecureStore.deleteItemAsync("accessToken");
       await SecureStore.deleteItemAsync("userEmail");
+      await SecureStore.deleteItemAsync("userData");
       setUser(null);
       setIsAuthenticated(false);
       router.replace("/(auth)/verify-device");
@@ -130,8 +139,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // Check if we have a valid token
         const token = await SecureStore.getItemAsync("accessToken");
         if (token) {
-          // Token exists, try to get user info
-          // For now, just set as authenticated
+          // Restore user data
+          const userDataStr = await SecureStore.getItemAsync("userData");
+          if (userDataStr) {
+            setUser(JSON.parse(userDataStr));
+          }
           setIsAuthenticated(true);
         } else {
           router.replace("/(auth)/login");
