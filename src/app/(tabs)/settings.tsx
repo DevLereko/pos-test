@@ -46,7 +46,6 @@ export default function SettingsScreen() {
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
 
-  // Fetch merchant details if not loaded
   useEffect(() => {
     const loadMerchantDetails = async () => {
       const merchantId = deviceConfig?.merchantId;
@@ -111,7 +110,6 @@ export default function SettingsScreen() {
     }
   };
 
-  // Preference toggle handler
   const handlePreferenceToggle = (key: string, value: boolean) => {
     const preferences = {
       ...config.preferences,
@@ -124,7 +122,6 @@ export default function SettingsScreen() {
     }
   };
 
-  // Get user info
   const getUserDisplayName = () => {
     if (user?.firstName || user?.lastName) {
       return `${user.firstName || ""} ${user.lastName || ""}`.trim();
@@ -151,7 +148,6 @@ export default function SettingsScreen() {
     return user?.isActive !== undefined ? user.isActive : true;
   };
 
-  // Get merchant info
   const getMerchantName = () => {
     return merchantInfo?.deviceName || merchantInfo?.businessName || merchantInfo?.name || "N/A";
   };
@@ -161,7 +157,7 @@ export default function SettingsScreen() {
   };
 
   const getMerchantLocation = () => {
-    return merchantInfo?.businessAddress || "N/A";
+    return merchantInfo?.location || "N/A";
   };
 
   const getMerchantDistrict = () => {
@@ -176,7 +172,6 @@ export default function SettingsScreen() {
     return merchantInfo?.isActive !== undefined ? merchantInfo.isActive : true;
   };
 
-  // Get device info
   const getDeviceName = () => {
     return deviceConfig?.deviceName || deviceConfig?.id || "N/A";
   };
@@ -663,30 +658,11 @@ export default function SettingsScreen() {
               ]}
             >
               {[
-                {
-                  key: "autoPrint",
-                  label: "Auto Print Receipt",
-                  value: config.preferences.autoPrint,
-                },
-                {
-                  key: "soundEffects",
-                  label: "Sound Effects",
-                  value: config.preferences.soundEffects,
-                },
-                {
-                  key: "offlineMode",
-                  label: "Offline Mode",
-                  value: config.preferences.offlineMode,
-                },
+                
                 {
                   key: "darkMode",
                   label: "Dark Mode",
                   value: config.preferences.darkMode,
-                },
-                {
-                  key: "biometricAuth",
-                  label: "Biometric Auth",
-                  value: config.preferences.biometricAuth,
                 },
               ].map((item, index) => (
                 <View
@@ -714,46 +690,6 @@ export default function SettingsScreen() {
                   />
                 </View>
               ))}
-              <View style={styles.settingItem}>
-                <View style={styles.settingLeft}>
-                  <ThemedText
-                    style={[styles.settingLabel, { color: colors.text }]}
-                  >
-                    Session Timeout
-                  </ThemedText>
-                </View>
-                <View style={styles.settingRight}>
-                  <ThemedText
-                    style={[
-                      styles.settingValue,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {config.preferences.sessionTimeout} min
-                  </ThemedText>
-                  <Pressable
-                    onPress={() => {
-                      const current = config.preferences.sessionTimeout;
-                      const options = [1, 5, 10, 15, 30];
-                      const next =
-                        options[
-                          (options.indexOf(current) + 1) % options.length
-                        ];
-                      const preferences = {
-                        ...config.preferences,
-                        sessionTimeout: next,
-                      };
-                      updateConfig({ preferences });
-                    }}
-                  >
-                    <SymbolView
-                      name={{ ios: "chevron.right", android: "arrow_forward" }}
-                      size={16}
-                      tintColor={colors.textSecondary}
-                    />
-                  </Pressable>
-                </View>
-              </View>
             </View>
           </View>
 
