@@ -33,7 +33,7 @@ export default function OtpScreen() {
     if (!pendingEmail) {
       router.back();
     }
-  }, [pendingEmail]);
+  }, [pendingEmail, router]);
 
   const handleVerifyLogin = async () => {
     if (!otp.trim() || otp.length !== 6) {

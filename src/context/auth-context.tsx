@@ -1,4 +1,4 @@
-import { authApi, SignInResponse, VerifyOtpResponse } from "@/api/auth";
+import { authApi, SignInResponse, VerifyOtpResponse, MerchantDevice } from "@/api/auth";
 import { apiClient, DecodedToken } from "@/api/client";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -34,13 +34,12 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
   getDecodedToken: () => DecodedToken | null;
   rehydrate: () => Promise<void>;
+  fetchMerchantDetails: (merchantId: string) => Promise<MerchantDevice | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any | null>(null);
   const [decodedToken, setDecodedToken] = useState<DecodedToken | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -74,19 +73,119 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return decodedToken;
   };
 
+  const verifyOtp = async (email: string, otp: string) => {
+    setIsLoading(true);
+    try {
+      const response = await authApi.verifyOtp({ email, otp });
+
+      const decoded = await apiClient.decodeToken();
+      if (!decoded) {
+        throw new Error("Failed to decode token after OTP verification");
+      }
+
+      setDecodedToken(decoded);
+
+      // Fetch user data
+      const userData = await authApi.getUserById(decoded.userId);
+
+      if (userData) {
+        setUser(userData);
+        await SecureStore.setItemAsync("userData", JSON.stringify(userData));
+        console.log(
+          "✅ User loaded from API:",
+          userData.firstName,
+          userData.lastName,
+        );
+
+        // Check if user has merchants
+        const userMerchants = userData.merchants || [];
+        if (userMerchants.length > 0) {
+          // Use the first merchant
+          const firstMerchant = userMerchants[0];
+          console.log(
+            "✅ Merchant found:",
+            firstMerchant.name,
+            firstMerchant.id,
+          );
+
+          // Store merchant info
+          setMerchantInfo(firstMerchant);
+          await SecureStore.setItemAsync(
+            "merchantInfo",
+            JSON.stringify(firstMerchant),
+          );
+
+          // Fetch device for this merchant
+          try {
+            const deviceInfo = await authApi.getMerchantDevice(
+              firstMerchant.id,
+            );
+            if (deviceInfo) {
+              setDeviceConfig(deviceInfo);
+              await SecureStore.setItemAsync(
+                "deviceConfig",
+                JSON.stringify(deviceInfo),
+              );
+              setDeviceVerified(true);
+              console.log(
+                "✅ Device loaded:",
+                deviceInfo.deviceName || deviceInfo.id,
+              );
+            }
+          } catch (deviceError) {
+            console.error("❌ Failed to fetch device info:", deviceError);
+            // Don't fail the login if device fetch fails
+          }
+        } else {
+          console.warn("⚠️ No merchants found for user");
+        }
+      } else {
+        // Fallback to decoded token
+        const fallbackUser = {
+          id: decoded.userId,
+          firstName: decoded.firstName || "",
+          lastName: decoded.lastName || "",
+          username: decoded.username,
+          email: decoded.email,
+          phoneNumber: decoded.phoneNumber || "",
+          roles:
+            decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) || [],
+          isMerchant:
+            decoded.role?.some((r) => r.includes("MERCHANT")) || false,
+        };
+        setUser(fallbackUser);
+        await SecureStore.setItemAsync(
+          "userData",
+          JSON.stringify(fallbackUser),
+        );
+      }
+
+      setIsAuthenticated(true);
+      router.replace("/(tabs)");
+      return response;
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const rehydrate = useCallback(async () => {
     try {
+      console.log("🔐 Rehydrating auth state...");
+
+      // Check device verification
       const config = await SecureStore.getItemAsync("deviceConfig");
       const merchant = await SecureStore.getItemAsync("merchantInfo");
+      const userDataStr = await SecureStore.getItemAsync("userData");
 
       if (config) {
         setDeviceConfig(JSON.parse(config));
         setDeviceVerified(true);
-        if (merchant) {
-          setMerchantInfo(JSON.parse(merchant));
-        }
-      } else {
-        setDeviceVerified(false);
+      }
+
+      if (merchant) {
+        setMerchantInfo(JSON.parse(merchant));
       }
 
       const token = await SecureStore.getItemAsync("accessToken");
@@ -97,54 +196,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           if (decoded) {
             setDecodedToken(decoded);
 
+            // Try to get fresh user data from API
             try {
               const userData = await authApi.getUserById(decoded.userId);
               if (userData) {
                 setUser(userData);
-              } else {
-                const storedUserData = await SecureStore.getItemAsync("userData");
-                if (storedUserData) {
-                  setUser(JSON.parse(storedUserData));
-                } else {
-                  setUser({
-                    id: decoded.userId,
-                    firstName: decoded.firstName || "",
-                    lastName: decoded.lastName || "",
-                    username: decoded.username,
-                    email: decoded.email,
-                    phoneNumber: decoded.phoneNumber || "",
-                    roles:
-                      decoded.role?.map((r) => ({
-                        name: r.replace("ROLE_", ""),
-                      })) || [],
-                    isMerchant:
-                      decoded.role?.some((r) => r.includes("MERCHANT")) || false,
-                  });
+                await SecureStore.setItemAsync(
+                  "userData",
+                  JSON.stringify(userData),
+                );
+                console.log("✅ User loaded from API:", userData.firstName);
+
+                // If we don't have merchant info but user has merchants, fetch device
+                if (
+                  !merchant &&
+                  userData.merchants &&
+                  userData.merchants.length > 0
+                ) {
+                  const firstMerchant = userData.merchants[0];
+                  setMerchantInfo(firstMerchant);
+                  await SecureStore.setItemAsync(
+                    "merchantInfo",
+                    JSON.stringify(firstMerchant),
+                  );
+
+                  try {
+                    const deviceInfo = await authApi.getMerchantDevice(
+                      firstMerchant.id,
+                    );
+                    if (deviceInfo) {
+                      setDeviceConfig(deviceInfo);
+                      await SecureStore.setItemAsync(
+                        "deviceConfig",
+                        JSON.stringify(deviceInfo),
+                      );
+                      setDeviceVerified(true);
+                    }
+                  } catch (deviceError) {
+                    console.error("Failed to fetch device:", deviceError);
+                  }
                 }
+              } else if (userDataStr) {
+                // Fallback to stored user data
+                const storedUser = JSON.parse(userDataStr);
+                setUser(storedUser);
               }
             } catch (apiError) {
-              console.warn(
-                "API call failed, using decoded token:",
-                apiError,
-              );
-              const storedUserData = await SecureStore.getItemAsync("userData");
-              if (storedUserData) {
-                setUser(JSON.parse(storedUserData));
-              } else {
-                setUser({
-                  id: decoded.userId,
-                  firstName: decoded.firstName || "",
-                  lastName: decoded.lastName || "",
-                  username: decoded.username,
-                  email: decoded.email,
-                  phoneNumber: decoded.phoneNumber || "",
-                  roles:
-                    decoded.role?.map((r) => ({
-                      name: r.replace("ROLE_", ""),
-                    })) || [],
-                  isMerchant:
-                    decoded.role?.some((r) => r.includes("MERCHANT")) || false,
-                });
+              console.warn("API call failed, using stored data:", apiError);
+              if (userDataStr) {
+                const storedUser = JSON.parse(userDataStr);
+                setUser(storedUser);
               }
             }
 
@@ -159,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsAuthenticated(false);
       setUser(null);
       setDecodedToken(null);
-    } catch (error) {
+    } catch {
       setIsAuthenticated(false);
       setUser(null);
       setDecodedToken(null);
@@ -186,7 +287,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           const userData = await authApi.getUserById(decoded.userId);
           if (userData) {
             setUser(userData);
-            await SecureStore.setItemAsync("userData", JSON.stringify(userData));
+            await SecureStore.setItemAsync(
+              "userData",
+              JSON.stringify(userData),
+            );
           } else {
             const fallbackUser = {
               id: decoded.userId,
@@ -202,7 +306,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
                 decoded.role?.some((r) => r.includes("MERCHANT")) || false,
             };
             setUser(fallbackUser);
-            await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
+            await SecureStore.setItemAsync(
+              "userData",
+              JSON.stringify(fallbackUser),
+            );
           }
         } catch (error) {
           console.warn(
@@ -223,7 +330,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               decoded.role?.some((r) => r.includes("MERCHANT")) || false,
           };
           setUser(fallbackUser);
-          await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
+          await SecureStore.setItemAsync(
+            "userData",
+            JSON.stringify(fallbackUser),
+          );
         }
         setIsAuthenticated(true);
       }
@@ -241,73 +351,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await authApi.signIn({ username, password });
       await SecureStore.setItemAsync("userEmail", response.userEmail);
       setPendingEmail(response.userEmail);
-      return response;
-    } catch (error) {
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const verifyOtp = async (email: string, otp: string) => {
-    setIsLoading(true);
-    try {
-      const response = await authApi.verifyOtp({ email, otp });
-
-      const decoded = await apiClient.decodeToken();
-      if (decoded) {
-        setDecodedToken(decoded);
-
-        try {
-          const userData = await authApi.getUserById(decoded.userId);
-          if (userData) {
-            setUser(userData);
-            await SecureStore.setItemAsync("userData", JSON.stringify(userData));
-            console.log(
-              "User loaded from API after OTP:",
-              userData.firstName,
-              userData.lastName,
-            );
-          } else {
-            const fallbackUser = {
-              id: decoded.userId,
-              firstName: decoded.firstName || "",
-              lastName: decoded.lastName || "",
-              username: decoded.username,
-              email: decoded.email,
-              phoneNumber: decoded.phoneNumber || "",
-              roles:
-                decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) || [],
-              isMerchant:
-                decoded.role?.some((r) => r.includes("MERCHANT")) || false,
-            };
-            setUser(fallbackUser);
-            await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
-          }
-        } catch (error) {
-          console.warn(
-            "Failed to get user details after OTP, using decoded token:",
-            error,
-          );
-          const fallbackUser = {
-            id: decoded.userId,
-            firstName: decoded.firstName || "",
-            lastName: decoded.lastName || "",
-            username: decoded.username,
-            email: decoded.email,
-            phoneNumber: decoded.phoneNumber || "",
-            roles:
-              decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) || [],
-            isMerchant:
-              decoded.role?.some((r) => r.includes("MERCHANT")) || false,
-          };
-          setUser(fallbackUser);
-          await SecureStore.setItemAsync("userData", JSON.stringify(fallbackUser));
-        }
-      }
-
-      setIsAuthenticated(true);
-      router.replace("/(tabs)");
       return response;
     } catch (error) {
       throw error;
@@ -336,7 +379,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const requestPasswordReset = async (email: string) => {
-    const result = await authApi.forgotPassword({ email });
+    await authApi.forgotPassword({ email });
     return { success: true };
   };
 
@@ -348,9 +391,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return authApi.resetPassword({ email, otp, newPassword });
   };
 
+  const fetchMerchantDetails = useCallback(
+    async (merchantId: string): Promise<MerchantDevice | null> => {
+      try {
+        const data = await authApi.getMerchantDevice(merchantId);
+        setMerchantInfo(data);
+        return data;
+      } catch (error) {
+        console.error("Failed to fetch merchant details:", error);
+        return null;
+      }
+    },
+    [],
+  );
+
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    rehydrate();
-  }, [rehydrate]);
+    rehydrate(); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const value = {
     user,
@@ -372,6 +431,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     refreshUser,
     getDecodedToken,
     rehydrate,
+    fetchMerchantDetails,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

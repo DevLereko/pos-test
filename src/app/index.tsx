@@ -7,13 +7,9 @@ import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 
 export default function IndexScreen() {
-  const { isAuthenticated, isLoading, deviceVerified, rehydrate } = useAuth();
+  const { isAuthenticated, isLoading, deviceVerified } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
-
-  useEffect(() => {
-    rehydrate();
-  }, [rehydrate]);
 
   useEffect(() => {
     if (!isLoading) {

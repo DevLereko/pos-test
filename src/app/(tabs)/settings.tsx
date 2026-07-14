@@ -1,4 +1,3 @@
-// src/app/(tabs)/settings.tsx
 import { SymbolView } from "expo-symbols";
 import { useState, useEffect } from "react";
 import {
@@ -26,7 +25,7 @@ import { useConfig } from "@/context/config-context";
 import { authApi } from "@/api/auth";
 
 export default function SettingsScreen() {
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors, toggleTheme } = useTheme();
   const { config, updateConfig } = useConfig();
   const {
     user,
@@ -35,6 +34,7 @@ export default function SettingsScreen() {
     deviceConfig,
     merchantInfo,
     refreshUser,
+    fetchMerchantDetails,
   } = useAuth();
   const insets = useSafeAreaInsets();
 
@@ -45,6 +45,17 @@ export default function SettingsScreen() {
     ...insets,
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
+
+  // Fetch merchant details if not loaded
+  useEffect(() => {
+    const loadMerchantDetails = async () => {
+      const merchantId = deviceConfig?.merchantId;
+      if (merchantId && !merchantInfo) {
+        await fetchMerchantDetails(merchantId);
+      }
+    };
+    loadMerchantDetails();
+  }, [deviceConfig?.merchantId, merchantInfo, fetchMerchantDetails]);
 
   const handleTestPrinter = async () => {
     if (!deviceConfig?.id) {
@@ -88,6 +99,10 @@ export default function SettingsScreen() {
     setLoading(true);
     try {
       await refreshUser();
+      const merchantId = deviceConfig?.merchantId;
+      if (merchantId) {
+        await fetchMerchantDetails(merchantId);
+      }
       Alert.alert("Success", "Settings refreshed successfully");
     } catch (error: any) {
       Alert.alert("Error", error.message || "Failed to refresh settings");
@@ -109,7 +124,7 @@ export default function SettingsScreen() {
     }
   };
 
-  // Get user info from user object or decoded token
+  // Get user info
   const getUserDisplayName = () => {
     if (user?.firstName || user?.lastName) {
       return `${user.firstName || ""} ${user.lastName || ""}`.trim();
@@ -132,30 +147,42 @@ export default function SettingsScreen() {
     return user?.phoneNumber || decodedToken?.phoneNumber || "N/A";
   };
 
+  const isUserActive = () => {
+    return user?.isActive !== undefined ? user.isActive : true;
+  };
+
   // Get merchant info
   const getMerchantName = () => {
-    return merchantInfo?.businessName || merchantInfo?.name || "N/A";
+    return merchantInfo?.deviceName || merchantInfo?.businessName || merchantInfo?.name || "N/A";
   };
 
   const getMerchantCode = () => {
-    return merchantInfo?.code || merchantInfo?.merchantCode || "N/A";
+    return merchantInfo?.merchantId || merchantInfo?.code || "N/A";
   };
 
   const getMerchantLocation = () => {
-    return merchantInfo?.location || merchantInfo?.businessAddress || "N/A";
+    return merchantInfo?.businessAddress || "N/A";
   };
 
   const getMerchantDistrict = () => {
     return merchantInfo?.district || "N/A";
   };
 
+  const getMerchantBusinessType = () => {
+    return merchantInfo?.businessType || "N/A";
+  };
+
+  const isMerchantActive = () => {
+    return merchantInfo?.isActive !== undefined ? merchantInfo.isActive : true;
+  };
+
   // Get device info
   const getDeviceName = () => {
-    return deviceConfig?.deviceName || "N/A";
+    return deviceConfig?.deviceName || deviceConfig?.id || "N/A";
   };
 
   const getDeviceId = () => {
-    return deviceConfig?.deviceId || deviceConfig?.deviceUuid || "N/A";
+    return deviceConfig?.deviceId || deviceConfig?.id || "N/A";
   };
 
   const getDeviceModel = () => {
@@ -167,11 +194,15 @@ export default function SettingsScreen() {
   };
 
   const getDeviceStatus = () => {
+    if (deviceConfig?.status) return deviceConfig.status;
     if (deviceConfig?.isActive === undefined) return "Unknown";
     return deviceConfig.isActive ? "Active" : "Inactive";
   };
 
   const getDeviceStatusColor = () => {
+    if (deviceConfig?.status) {
+      return deviceConfig.status === "Active" ? VODACOM.green : VODACOM.red;
+    }
     if (deviceConfig?.isActive === undefined) return VODACOM.greyDark;
     return deviceConfig.isActive ? VODACOM.green : VODACOM.red;
   };
@@ -215,7 +246,7 @@ export default function SettingsScreen() {
             </ThemedText>
           </View>
 
-          {/* User Information - Compact */}
+          {/* User Information - With Status Badge */}
           <View style={styles.section}>
             <ThemedText
               style={[styles.sectionTitle, { color: colors.textSecondary }]}
@@ -229,22 +260,49 @@ export default function SettingsScreen() {
               ]}
             >
               <View style={styles.userInfoCompact}>
-                <View
-                  style={[
-                    styles.avatarSmall,
-                    { backgroundColor: `${VODACOM.red}15` },
-                  ]}
-                >
-                  <ThemedText
-                    style={[styles.avatarTextSmall, { color: VODACOM.red }]}
+                <View style={styles.avatarContainer}>
+                  <View
+                    style={[
+                      styles.avatarSmall,
+                      { backgroundColor: `${VODACOM.red}15` },
+                    ]}
                   >
-                    {getUserDisplayName().charAt(0).toUpperCase()}
-                  </ThemedText>
+                    <ThemedText
+                      style={[styles.avatarTextSmall, { color: VODACOM.red }]}
+                    >
+                      {getUserDisplayName().charAt(0).toUpperCase()}
+                    </ThemedText>
+                  </View>
+                  {/* Status Badge on Avatar */}
+                  <View
+                    style={[
+                      styles.statusBadgeAvatar,
+                      {
+                        backgroundColor: isUserActive()
+                          ? VODACOM.green
+                          : VODACOM.red,
+                      },
+                    ]}
+                  />
                 </View>
                 <View style={styles.userDetailsCompact}>
-                  <ThemedText style={[styles.userName, { color: colors.text }]}>
-                    {getUserDisplayName()}
-                  </ThemedText>
+                  <View style={styles.userNameRow}>
+                    <ThemedText
+                      style={[styles.userName, { color: colors.text }]}
+                    >
+                      {getUserDisplayName()}
+                    </ThemedText>
+                    <View
+                      style={[
+                        styles.statusDotSmall,
+                        {
+                          backgroundColor: isUserActive()
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
+                      ]}
+                    />
+                  </View>
                   <View style={styles.userInfoRow}>
                     <SymbolView
                       name={{ ios: "person.fill", android: "person" }}
@@ -295,89 +353,129 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* Merchant Information - Compact */}
-          {merchantInfo && (
-            <View style={styles.section}>
-              <ThemedText
-                style={[styles.sectionTitle, { color: colors.textSecondary }]}
-              >
-                Merchant
-              </ThemedText>
-              <View
-                style={[
-                  styles.sectionContainer,
-                  { backgroundColor: colors.surface },
-                ]}
-              >
-                <View style={styles.infoGrid}>
-                  <View style={styles.infoGridItem}>
-                    <ThemedText
-                      style={[
-                        styles.infoGridLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Name
-                    </ThemedText>
+          {/* Merchant Information */}
+          <View style={styles.section}>
+            <ThemedText
+              style={[styles.sectionTitle, { color: colors.textSecondary }]}
+            >
+              Merchant
+            </ThemedText>
+            <View
+              style={[
+                styles.sectionContainer,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.infoGrid}>
+                <View style={styles.infoGridItem}>
+                  <ThemedText
+                    style={[
+                      styles.infoGridLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Name
+                  </ThemedText>
+                  <View style={styles.infoGridValueRow}>
                     <ThemedText
                       style={[styles.infoGridValue, { color: colors.text }]}
                       numberOfLines={1}
                     >
                       {getMerchantName()}
                     </ThemedText>
-                  </View>
-                  <View style={styles.infoGridItem}>
-                    <ThemedText
+                    <View
                       style={[
-                        styles.infoGridLabel,
-                        { color: colors.textSecondary },
+                        styles.statusDotSmall,
+                        {
+                          backgroundColor: isMerchantActive()
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
                       ]}
-                    >
-                      Code
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.infoGridValue, { color: colors.text }]}
-                    >
-                      {getMerchantCode()}
-                    </ThemedText>
+                    />
                   </View>
-                  <View style={styles.infoGridItem}>
-                    <ThemedText
-                      style={[
-                        styles.infoGridLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Location
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.infoGridValue, { color: colors.text }]}
-                      numberOfLines={1}
-                    >
-                      {getMerchantLocation()}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.infoGridItem}>
-                    <ThemedText
-                      style={[
-                        styles.infoGridLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      District
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.infoGridValue, { color: colors.text }]}
-                    >
-                      {getMerchantDistrict()}
-                    </ThemedText>
-                  </View>
+                </View>
+                <View style={styles.infoGridItem}>
+                  <ThemedText
+                    style={[
+                      styles.infoGridLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Code
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.infoGridValue, { color: colors.text }]}
+                  >
+                    {getMerchantCode()}
+                  </ThemedText>
+                </View>
+                <View style={styles.infoGridItem}>
+                  <ThemedText
+                    style={[
+                      styles.infoGridLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Location
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.infoGridValue, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {getMerchantLocation()}
+                  </ThemedText>
+                </View>
+                <View style={styles.infoGridItem}>
+                  <ThemedText
+                    style={[
+                      styles.infoGridLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    District
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.infoGridValue, { color: colors.text }]}
+                  >
+                    {getMerchantDistrict()}
+                  </ThemedText>
+                </View>
+                <View style={styles.infoGridItem}>
+                  <ThemedText
+                    style={[
+                      styles.infoGridLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Business Type
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.infoGridValue, { color: colors.text }]}
+                  >
+                    {getMerchantBusinessType()}
+                  </ThemedText>
+                </View>
+                <View style={styles.infoGridItem}>
+                  <ThemedText
+                    style={[
+                      styles.infoGridLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Users
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.infoGridValue, { color: colors.text }]}
+                  >
+                    {merchantInfo?.userCount || "N/A"}
+                  </ThemedText>
                 </View>
               </View>
             </View>
-          )}
+          </View>
 
-          {/* Device Information - Compact */}
+          {/* Device Information */}
           {deviceConfig && (
             <View style={styles.section}>
               <ThemedText
@@ -751,12 +849,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  // User Compact
-  userInfoCompact: {
-    flexDirection: "row",
-    alignItems: "center",
+  loadingContainer: {
     padding: Spacing.three,
-    gap: Spacing.two,
+    alignItems: "center",
+  },
+  // Avatar with Status Badge
+  avatarContainer: {
+    position: "relative",
+    width: 48,
+    height: 48,
   },
   avatarSmall: {
     width: 48,
@@ -769,9 +870,31 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
   },
+  statusBadgeAvatar: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  // User Compact
+  userInfoCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
   userDetailsCompact: {
     flex: 1,
     gap: 2,
+  },
+  userNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   userName: {
     fontSize: 16,
@@ -800,6 +923,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0.3,
+  },
+  infoGridValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   infoGridValue: {
     fontSize: 14,
@@ -843,9 +971,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statusDotSmall: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusTextSmall: {
     fontSize: 13,

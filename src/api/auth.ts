@@ -39,14 +39,25 @@ export interface ResetPasswordRequest {
 }
 
 export interface MerchantDevice {
-  deviceUuid: string;
-  merchantId: string;
-  merchantName?: string;
-  businessName?: string;
-  businessAddress?: string;
+  id: string;
+  deviceName?: string;
+  deviceId?: string;
   terminalId: string;
-  phoneNumber?: string;
-  email?: string;
+  deviceModel?: string;
+  serialNumber?: string;
+  merchantId: string;
+  assignedUserId?: string | null;
+  osVersion?: string;
+  isActive: boolean;
+  status?: string;
+  lastSyncAt?: string;
+  pairingSecretHash?: string;
+  deviceFingerprint?: string;
+  pairingApprovedAt?: string;
+  linkedAt?: string;
+  unlinkedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface POSDevice {
@@ -88,8 +99,22 @@ export interface User {
   businessAddress?: string;
   isActive: boolean;
   roles: { id: string; name: string }[];
+  merchants?: Merchant[];
+  merchantCount?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface Merchant {
+  id: string;
+  name: string;
+  code: string;
+  isActive: boolean;
+  location: string;
+  district: string;
+  businessType: string;
+  assignedAt?: string;
+  assignedBy?: string;
 }
 
 export const authApi = {
@@ -151,7 +176,8 @@ export const authApi = {
   },
 
   getMerchantDevice: async (merchantId: string): Promise<MerchantDevice> => {
-    return apiClient.get<MerchantDevice>(`/portal/merchants/${merchantId}/device`, true);
+    const response = await apiClient.get<{ message: string; device: MerchantDevice }>(`/portal/merchants/${merchantId}/device`, true);
+    return response.device;
   },
 
   updateUser: async (email: string, userData: Partial<User>): Promise<User> => {

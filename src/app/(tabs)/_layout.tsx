@@ -1,19 +1,13 @@
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
 import { useAuth } from "@/context/auth-context";
 import { useEffect } from "react";
-import { router } from "expo-router";
 import { StyleSheet, ActivityIndicator, View } from "react-native";
 import { useTheme } from "@/context/theme-context";
 import { AppSymbol } from "@/components/app-symbol";
 
 export default function TabLayout() {
-  const { isAuthenticated, isLoading, deviceVerified, rehydrate } = useAuth();
+  const { isAuthenticated, isLoading, deviceVerified } = useAuth();
   const { colors } = useTheme();
-
-  // Rehydrate when tabs mount (for refresh cases)
-  useEffect(() => {
-    rehydrate();
-  }, [rehydrate]);
 
   // Handle navigation based on auth state
   useEffect(() => {
@@ -26,7 +20,7 @@ export default function TabLayout() {
         }
       }
     }
-  }, [isAuthenticated, isLoading, deviceVerified, router]);
+  }, [isAuthenticated, isLoading, deviceVerified]);
 
   // Show loading while checking auth
   if (isLoading) {

@@ -106,9 +106,11 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // Load config from storage on mount
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     loadConfig();
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const saveConfig = async () => {
     try {

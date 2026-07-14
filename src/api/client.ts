@@ -171,7 +171,7 @@ class ApiClient {
     try {
       const decoded = jwtDecode<DecodedToken>(token);
       return decoded.exp * 1000 > Date.now();
-    } catch (error) {
+    } catch {
       return false;
     }
   }

@@ -98,9 +98,11 @@ export default function VerifyDeviceScreen() {
     }
   };
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     verifyDevice();
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const handleRetry = () => {
     verifyDevice();

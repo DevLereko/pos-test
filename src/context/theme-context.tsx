@@ -24,6 +24,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     if (systemScheme) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(systemScheme === "dark" ? "dark" : "light");
     }
   }, [systemScheme]);

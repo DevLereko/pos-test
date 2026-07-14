@@ -42,7 +42,7 @@ const features = [
 ];
 
 export default function ExploreScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   const contentInset = {
