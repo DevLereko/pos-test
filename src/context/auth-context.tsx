@@ -1,4 +1,3 @@
-// context/auth-context.tsx
 import {
   authApi,
   SignInResponse,
