@@ -70,24 +70,14 @@ export default function VerifyDeviceScreen() {
       setDeviceInfo(deviceConfig);
       setDeviceVerified(true);
 
-      // Fetch merchant info
-      try {
-        const merchant = await authApi.getMerchantDevice(response.merchantId);
-        setMerchantInfo(merchant);
-        await SecureStore.setItemAsync(
-          "merchantInfo",
-          JSON.stringify(merchant),
-        );
-      } catch (merchantError) {
-        console.warn("Failed to fetch merchant info:", merchantError);
-        setMerchantInfo({ merchantId: response.merchantId });
-      }
-
       // Store device config locally
       await SecureStore.setItemAsync(
         "deviceConfig",
         JSON.stringify(deviceConfig),
       );
+
+      // Note: Merchant info will be fetched after login via verifyOtp
+      // Do not fetch merchant info here as we don't have a valid token yet
 
       // Navigate to login after short delay
       setTimeout(() => {
@@ -340,7 +330,7 @@ export default function VerifyDeviceScreen() {
                       },
                     ]}
                   >
-                    Check if these values match what's registered in the
+                    Check if these values match what&apos;s registered in the
                     backend. Device ID should match the one stored for this
                     merchant.
                   </ThemedText>

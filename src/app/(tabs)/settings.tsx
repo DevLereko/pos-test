@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { MerchantSelector } from "@/components/merchant-selector";
 import {
   BottomTabInset,
   MaxContentWidth,
@@ -22,6 +23,7 @@ import {
 import { useTheme } from "@/context/theme-context";
 import { useAuth } from "@/context/auth-context";
 import { useConfig } from "@/context/config-context";
+import { useMerchant } from "@/context/merchant-context";
 import { authApi } from "@/api/auth";
 
 export default function SettingsScreen() {
@@ -35,7 +37,15 @@ export default function SettingsScreen() {
     merchantInfo,
     refreshUser,
     fetchMerchantDetails,
+    userMerchants,
   } = useAuth();
+  const {
+    selectedMerchant,
+    selectMerchant,
+    isMerchantSelectorVisible,
+    showMerchantSelector,
+    hasMultipleActiveMerchants,
+  } = useMerchant();
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(false);
@@ -48,13 +58,18 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     const loadMerchantDetails = async () => {
-      const merchantId = deviceConfig?.merchantId;
+      const merchantId = deviceConfig?.merchantId || selectedMerchant?.id;
       if (merchantId && !merchantInfo) {
         await fetchMerchantDetails(merchantId);
       }
     };
     loadMerchantDetails();
-  }, [deviceConfig?.merchantId, merchantInfo, fetchMerchantDetails]);
+  }, [
+    deviceConfig?.merchantId,
+    selectedMerchant,
+    merchantInfo,
+    fetchMerchantDetails,
+  ]);
 
   const handleTestPrinter = async () => {
     if (!deviceConfig?.id) {
@@ -98,7 +113,7 @@ export default function SettingsScreen() {
     setLoading(true);
     try {
       await refreshUser();
-      const merchantId = deviceConfig?.merchantId;
+      const merchantId = deviceConfig?.merchantId || selectedMerchant?.id;
       if (merchantId) {
         await fetchMerchantDetails(merchantId);
       }
@@ -149,27 +164,36 @@ export default function SettingsScreen() {
   };
 
   const getMerchantName = () => {
-    return merchantInfo?.deviceName || merchantInfo?.businessName || merchantInfo?.name || "N/A";
+    return (
+      selectedMerchant?.name ||
+      merchantInfo?.name ||
+      merchantInfo?.businessName ||
+      "N/A"
+    );
   };
 
   const getMerchantCode = () => {
-    return merchantInfo?.merchantId || merchantInfo?.code || "N/A";
+    return selectedMerchant?.code || merchantInfo?.code || "N/A";
   };
 
   const getMerchantLocation = () => {
-    return merchantInfo?.location || "N/A";
+    return selectedMerchant?.location || merchantInfo?.location || "N/A";
   };
 
   const getMerchantDistrict = () => {
-    return merchantInfo?.district || "N/A";
+    return selectedMerchant?.district || merchantInfo?.district || "N/A";
   };
 
   const getMerchantBusinessType = () => {
-    return merchantInfo?.businessType || "N/A";
+    return (
+      selectedMerchant?.businessType || merchantInfo?.businessType || "N/A"
+    );
   };
 
   const isMerchantActive = () => {
-    return merchantInfo?.isActive !== undefined ? merchantInfo.isActive : true;
+    return selectedMerchant?.isActive !== undefined
+      ? selectedMerchant.isActive
+      : true;
   };
 
   const getDeviceName = () => {
@@ -241,7 +265,7 @@ export default function SettingsScreen() {
             </ThemedText>
           </View>
 
-          {/* User Information - With Status Badge */}
+          {/* User Information */}
           <View style={styles.section}>
             <ThemedText
               style={[styles.sectionTitle, { color: colors.textSecondary }]}
@@ -268,7 +292,6 @@ export default function SettingsScreen() {
                       {getUserDisplayName().charAt(0).toUpperCase()}
                     </ThemedText>
                   </View>
-                  {/* Status Badge on Avatar */}
                   <View
                     style={[
                       styles.statusBadgeAvatar,
@@ -347,6 +370,62 @@ export default function SettingsScreen() {
               </View>
             </View>
           </View>
+
+          {/* Merchant Selection - Show only if multiple merchants */}
+          {hasMultipleActiveMerchants && (
+            <View style={styles.section}>
+              <ThemedText
+                style={[styles.sectionTitle, { color: colors.textSecondary }]}
+              >
+                Merchant Selection
+              </ThemedText>
+              <View
+                style={[
+                  styles.sectionContainer,
+                  { backgroundColor: colors.surface },
+                ]}
+              >
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.settingItem,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => showMerchantSelector(true)}
+                >
+                  <View style={styles.settingLeft}>
+                    <ThemedText
+                      style={[styles.settingLabel, { color: colors.text }]}
+                    >
+                      Active Merchant
+                    </ThemedText>
+                    <ThemedText
+                      style={[
+                        styles.settingDescription,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {selectedMerchant?.name || "Select a merchant"}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.settingRight}>
+                    <ThemedText
+                      style={[
+                        styles.settingValue,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {selectedMerchant?.code || "N/A"}
+                    </ThemedText>
+                    <SymbolView
+                      name={{ ios: "chevron.right", android: "arrow_forward" }}
+                      size={16}
+                      tintColor={colors.textSecondary}
+                    />
+                  </View>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           {/* Merchant Information */}
           <View style={styles.section}>
@@ -458,13 +537,32 @@ export default function SettingsScreen() {
                       { color: colors.textSecondary },
                     ]}
                   >
-                    Users
+                    Status
                   </ThemedText>
-                  <ThemedText
-                    style={[styles.infoGridValue, { color: colors.text }]}
-                  >
-                    {merchantInfo?.userCount || "N/A"}
-                  </ThemedText>
+                  <View style={styles.statusBadge}>
+                    <View
+                      style={[
+                        styles.statusDotSmall,
+                        {
+                          backgroundColor: isMerchantActive()
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
+                      ]}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.statusTextSmall,
+                        {
+                          color: isMerchantActive()
+                            ? VODACOM.green
+                            : VODACOM.red,
+                        },
+                      ]}
+                    >
+                      {isMerchantActive() ? "Active" : "Inactive"}
+                    </ThemedText>
+                  </View>
                 </View>
               </View>
             </View>
@@ -658,20 +756,13 @@ export default function SettingsScreen() {
               ]}
             >
               {[
-                
                 {
                   key: "darkMode",
                   label: "Dark Mode",
                   value: config.preferences.darkMode,
                 },
-              ].map((item, index) => (
-                <View
-                  key={item.key}
-                  style={[
-                    styles.settingItem,
-                    index < 4 && styles.settingBorder,
-                  ]}
-                >
+              ].map((item) => (
+                <View key={item.key} style={styles.settingItem}>
                   <View style={styles.settingLeft}>
                     <ThemedText
                       style={[styles.settingLabel, { color: colors.text }]}
@@ -731,6 +822,16 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Merchant Selector Modal */}
+      <MerchantSelector
+        visible={isMerchantSelectorVisible}
+        merchants={userMerchants}
+        onSelect={selectMerchant}
+        onClose={() => showMerchantSelector(false)}
+        title="Switch Merchant"
+        subtitle="Select which merchant to associate with this device"
+      />
     </ThemedView>
   );
 }
@@ -785,11 +886,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  loadingContainer: {
-    padding: Spacing.three,
-    alignItems: "center",
-  },
-  // Avatar with Status Badge
   avatarContainer: {
     position: "relative",
     width: 48,
@@ -816,7 +912,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#FFFFFF",
   },
-  // User Compact
   userInfoCompact: {
     flexDirection: "row",
     alignItems: "center",
@@ -844,7 +939,6 @@ const styles = StyleSheet.create({
   userInfoText: {
     fontSize: 13,
   },
-  // Info Grid
   infoGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -869,7 +963,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  // Setting Items
   settingItem: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -900,7 +993,6 @@ const styles = StyleSheet.create({
   settingValue: {
     fontSize: 14,
   },
-  // Status
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -915,7 +1007,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-  // Test Button
   testButton: {
     paddingHorizontal: 16,
     paddingVertical: 6,
@@ -934,7 +1025,6 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
   },
-  // Actions
   actionsContainer: {
     gap: Spacing.two,
     marginTop: Spacing.two,
@@ -954,7 +1044,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  // Footer
   footer: {
     alignItems: "center",
     paddingTop: Spacing.three,

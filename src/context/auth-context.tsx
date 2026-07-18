@@ -1,4 +1,11 @@
-import { authApi, SignInResponse, VerifyOtpResponse, MerchantDevice } from "@/api/auth";
+// context/auth-context.tsx
+import {
+  authApi,
+  SignInResponse,
+  VerifyOtpResponse,
+  MerchantDevice,
+  Merchant,
+} from "@/api/auth";
 import { apiClient, DecodedToken } from "@/api/client";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -19,8 +26,10 @@ interface AuthContextType {
   deviceConfig: any | null;
   merchantInfo: any | null;
   pendingEmail: string | null;
+  userMerchants: Merchant[];
+  showMerchantSelection: boolean;
   login: (username: string, password: string) => Promise<SignInResponse>;
-  verifyOtp: (email: string, otp: string) => Promise<VerifyOtpResponse>;
+  verifyOtp: (email: string, otp: string) => Promise<VerifyOtpResponse | undefined>;
   logout: () => Promise<void>;
   resetPassword: (
     email: string,
@@ -35,11 +44,15 @@ interface AuthContextType {
   getDecodedToken: () => DecodedToken | null;
   rehydrate: () => Promise<void>;
   fetchMerchantDetails: (merchantId: string) => Promise<MerchantDevice | null>;
+  handleMerchantSelection: (merchant: Merchant) => Promise<void>;
+  setShowMerchantSelection: (show: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<any | null>(null);
   const [decodedToken, setDecodedToken] = useState<DecodedToken | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -48,6 +61,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [deviceConfig, setDeviceConfig] = useState<any | null>(null);
   const [merchantInfo, setMerchantInfo] = useState<any | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [userMerchants, setUserMerchants] = useState<Merchant[]>([]);
+  const [showMerchantSelection, setShowMerchantSelection] = useState(false);
 
   const checkDeviceVerification = async () => {
     try {
@@ -73,9 +88,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return decodedToken;
   };
 
+  const handleMerchantSelection = async (merchant: Merchant) => {
+    try {
+      console.log("🔄 Handling merchant selection:", merchant.name);
+
+      // Store selected merchant
+      setMerchantInfo(merchant);
+      await SecureStore.setItemAsync(
+        "selectedMerchant",
+        JSON.stringify(merchant),
+      );
+
+      // Fetch device for this merchant
+      try {
+        const deviceInfo = await authApi.getMerchantDevice(merchant.id);
+        if (deviceInfo) {
+          setDeviceConfig(deviceInfo);
+          await SecureStore.setItemAsync(
+            "deviceConfig",
+            JSON.stringify(deviceInfo),
+          );
+          setDeviceVerified(true);
+          console.log("✅ Device loaded for merchant:", merchant.name);
+        }
+      } catch (deviceError) {
+        console.error("❌ Failed to fetch device info:", deviceError);
+        // Don't fail the login if device fetch fails
+      }
+
+      setShowMerchantSelection(false);
+
+      // Navigate to tabs after merchant selection
+      router.replace("/(tabs)");
+    } catch (error) {
+      console.error("Failed to select merchant:", error);
+    }
+  };
+
   const verifyOtp = async (email: string, otp: string) => {
     setIsLoading(true);
     try {
+      console.log("🔐 Verifying OTP for:", email);
+
       const response = await authApi.verifyOtp({ email, otp });
 
       const decoded = await apiClient.decodeToken();
@@ -84,6 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setDecodedToken(decoded);
+      console.log("✅ Token decoded:", decoded.username);
 
       // Fetch user data
       const userData = await authApi.getUserById(decoded.userId);
@@ -98,46 +153,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         // Check if user has merchants
-        const userMerchants = userData.merchants || [];
-        if (userMerchants.length > 0) {
-          // Use the first merchant
-          const firstMerchant = userMerchants[0];
-          console.log(
-            "✅ Merchant found:",
-            firstMerchant.name,
-            firstMerchant.id,
-          );
+        const merchants = userData.merchants || [];
+        setUserMerchants(merchants);
 
-          // Store merchant info
-          setMerchantInfo(firstMerchant);
-          await SecureStore.setItemAsync(
-            "merchantInfo",
-            JSON.stringify(firstMerchant),
-          );
+        if (merchants.length > 0) {
+          console.log(`✅ ${merchants.length} merchants found for user`);
 
-          // Fetch device for this merchant
-          try {
-            const deviceInfo = await authApi.getMerchantDevice(
-              firstMerchant.id,
+          // Check if there's a previously selected merchant
+          const storedMerchantStr =
+            await SecureStore.getItemAsync("selectedMerchant");
+          let selectedMerchant: Merchant | null = null;
+
+          if (storedMerchantStr) {
+            const parsed = JSON.parse(storedMerchantStr);
+            const stillExists = merchants.find(
+              (m: Merchant) => m.id === parsed.id,
             );
-            if (deviceInfo) {
-              setDeviceConfig(deviceInfo);
-              await SecureStore.setItemAsync(
-                "deviceConfig",
-                JSON.stringify(deviceInfo),
-              );
-              setDeviceVerified(true);
+            if (stillExists && stillExists.isActive) {
+              selectedMerchant = stillExists;
               console.log(
-                "✅ Device loaded:",
-                deviceInfo.deviceName || deviceInfo.id,
+                "✅ Using previously selected merchant:",
+                selectedMerchant.name,
               );
             }
-          } catch (deviceError) {
-            console.error("❌ Failed to fetch device info:", deviceError);
-            // Don't fail the login if device fetch fails
+          }
+
+          // If no valid stored merchant, find the first active one
+          if (!selectedMerchant) {
+            const activeMerchants = merchants.filter(
+              (m: Merchant) => m.isActive,
+            );
+            if (activeMerchants.length === 1) {
+              selectedMerchant = activeMerchants[0];
+              console.log(
+                "✅ Auto-selected only active merchant:",
+                selectedMerchant.name,
+              );
+            } else if (activeMerchants.length > 1) {
+              // Multiple active merchants - show selection
+              console.log(
+                "⚠️ Multiple active merchants found, showing selection",
+              );
+              setShowMerchantSelection(true);
+              setIsLoading(false);
+              return; // Don't navigate, wait for merchant selection
+            } else {
+              // No active merchants - use first one
+              selectedMerchant = merchants[0];
+              console.log(
+                "⚠️ No active merchants, using first:",
+                selectedMerchant.name,
+              );
+            }
+          }
+
+          if (selectedMerchant) {
+            await handleMerchantSelection(selectedMerchant);
           }
         } else {
           console.warn("⚠️ No merchants found for user");
+          // Still navigate to tabs even without merchants
+          setIsAuthenticated(true);
+          router.replace("/(tabs)");
         }
       } else {
         // Fallback to decoded token
@@ -158,12 +235,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           "userData",
           JSON.stringify(fallbackUser),
         );
+
+        // Navigate to tabs even without merchant data
+        setIsAuthenticated(true);
+        router.replace("/(tabs)");
       }
 
       setIsAuthenticated(true);
-      router.replace("/(tabs)");
       return response;
     } catch (error) {
+      console.error("❌ OTP verification failed:", error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -195,6 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const decoded = await apiClient.decodeToken();
           if (decoded) {
             setDecodedToken(decoded);
+            console.log("✅ Token rehydrated for:", decoded.username);
 
             // Try to get fresh user data from API
             try {
@@ -205,15 +287,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   "userData",
                   JSON.stringify(userData),
                 );
-                console.log("✅ User loaded from API:", userData.firstName);
+                console.log("✅ User rehydrated:", userData.firstName);
 
-                // If we don't have merchant info but user has merchants, fetch device
-                if (
-                  !merchant &&
-                  userData.merchants &&
-                  userData.merchants.length > 0
-                ) {
-                  const firstMerchant = userData.merchants[0];
+                // Check for merchants
+                const merchants = userData.merchants || [];
+                setUserMerchants(merchants);
+
+                // If we don't have merchant info but user has merchants
+                if (!merchant && merchants.length > 0) {
+                  const firstMerchant = merchants[0];
                   setMerchantInfo(firstMerchant);
                   await SecureStore.setItemAsync(
                     "merchantInfo",
@@ -233,16 +315,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       setDeviceVerified(true);
                     }
                   } catch (deviceError) {
-                    console.error("Failed to fetch device:", deviceError);
+                    console.error(
+                      "Failed to fetch device during rehydrate:",
+                      deviceError,
+                    );
                   }
                 }
               } else if (userDataStr) {
-                // Fallback to stored user data
                 const storedUser = JSON.parse(userDataStr);
                 setUser(storedUser);
               }
             } catch (apiError) {
-              console.warn("API call failed, using stored data:", apiError);
+              console.warn(
+                "API call failed during rehydrate, using stored data:",
+                apiError,
+              );
               if (userDataStr) {
                 const storedUser = JSON.parse(userDataStr);
                 setUser(storedUser);
@@ -253,6 +340,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
         } else {
+          console.log("❌ Token expired, clearing...");
           await SecureStore.deleteItemAsync("accessToken");
         }
       }
@@ -260,7 +348,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthenticated(false);
       setUser(null);
       setDecodedToken(null);
-    } catch {
+    } catch (error) {
+      console.error("❌ Rehydrate failed:", error);
       setIsAuthenticated(false);
       setUser(null);
       setDecodedToken(null);
@@ -291,49 +380,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               "userData",
               JSON.stringify(userData),
             );
-          } else {
-            const fallbackUser = {
-              id: decoded.userId,
-              firstName: decoded.firstName || "",
-              lastName: decoded.lastName || "",
-              username: decoded.username,
-              email: decoded.email,
-              phoneNumber: decoded.phoneNumber || "",
-              roles:
-                decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
-                [],
-              isMerchant:
-                decoded.role?.some((r) => r.includes("MERCHANT")) || false,
-            };
-            setUser(fallbackUser);
-            await SecureStore.setItemAsync(
-              "userData",
-              JSON.stringify(fallbackUser),
-            );
+
+            // Refresh merchants
+            const merchants = userData.merchants || [];
+            setUserMerchants(merchants);
           }
         } catch (error) {
-          console.warn(
-            "Failed to get user details, using decoded token:",
-            error,
-          );
-          const fallbackUser = {
-            id: decoded.userId,
-            firstName: decoded.firstName || "",
-            lastName: decoded.lastName || "",
-            username: decoded.username,
-            email: decoded.email,
-            phoneNumber: decoded.phoneNumber || "",
-            roles:
-              decoded.role?.map((r) => ({ name: r.replace("ROLE_", "") })) ||
-              [],
-            isMerchant:
-              decoded.role?.some((r) => r.includes("MERCHANT")) || false,
-          };
-          setUser(fallbackUser);
-          await SecureStore.setItemAsync(
-            "userData",
-            JSON.stringify(fallbackUser),
-          );
+          console.warn("Failed to refresh user details:", error);
         }
         setIsAuthenticated(true);
       }
@@ -366,6 +419,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setDecodedToken(null);
       setIsAuthenticated(false);
+      setUserMerchants([]);
+      setShowMerchantSelection(false);
       router.replace("/(auth)/login");
     } catch (error) {
       console.error("Logout failed:", error);
@@ -405,11 +460,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [],
   );
 
-  /* eslint-disable react-hooks/exhaustive-deps */
+  /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
   useEffect(() => {
-    rehydrate(); // eslint-disable-line react-hooks/set-state-in-effect
+    rehydrate();
   }, []);
-  /* eslint-enable react-hooks/exhaustive-deps */
+  /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
   const value = {
     user,
@@ -420,6 +475,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deviceConfig,
     merchantInfo,
     pendingEmail,
+    userMerchants,
+    showMerchantSelection,
     login,
     verifyOtp,
     logout,
@@ -432,6 +489,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getDecodedToken,
     rehydrate,
     fetchMerchantDetails,
+    handleMerchantSelection,
+    setShowMerchantSelection,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

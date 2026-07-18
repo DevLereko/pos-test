@@ -16,10 +16,19 @@ import { ThemedView } from "@/components/themed-view";
 import { Spacing, VODACOM } from "@/constants/theme";
 import { useTheme } from "@/context/theme-context";
 import { useAuth } from "@/context/auth-context";
+import { MerchantSelector } from "@/components/merchant-selector";
 
 export default function OtpScreen() {
-  const { colors, isDark } = useTheme();
-  const { verifyOtp, resetPassword, pendingEmail, setPendingEmail } = useAuth();
+  const { colors } = useTheme();
+  const {
+    verifyOtp,
+    resetPassword,
+    pendingEmail,
+    setPendingEmail,
+    showMerchantSelection,
+    userMerchants,
+    handleMerchantSelection,
+  } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
   const mode: "login" | "reset" = params.mode === "reset" ? "reset" : "login";
@@ -136,7 +145,7 @@ export default function OtpScreen() {
                 styles.input,
                 styles.otpInput,
                 {
-                  backgroundColor: isDark ? colors.surfaceStrong : VODACOM.light,
+                  backgroundColor: colors.surfaceStrong,
                   color: colors.text,
                 },
               ]}
@@ -160,9 +169,7 @@ export default function OtpScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark
-                        ? colors.surfaceStrong
-                        : VODACOM.light,
+                      backgroundColor: colors.surfaceStrong,
                       color: colors.text,
                     },
                   ]}
@@ -180,12 +187,10 @@ export default function OtpScreen() {
                   Confirm Password
                 </ThemedText>
                 <TextInput
-                  style={[
+style={[
                     styles.input,
                     {
-                      backgroundColor: isDark
-                        ? colors.surfaceStrong
-                        : VODACOM.light,
+                      backgroundColor: colors.surfaceStrong,
                       color: colors.text,
                     },
                   ]}
@@ -233,6 +238,14 @@ export default function OtpScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      <MerchantSelector
+        visible={showMerchantSelection}
+        merchants={userMerchants}
+        onSelect={handleMerchantSelection}
+        onClose={() => {}}
+        title="Select Merchant"
+        subtitle="Choose which merchant to associate with this device"
+      />
     </ThemedView>
   );
 }

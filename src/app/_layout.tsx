@@ -6,14 +6,11 @@ import {
 import { useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Slot } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
 
 import { ThemeProvider as CustomThemeProvider } from "@/context/theme-context";
 import { ConfigProvider } from "@/context/config-context";
 import { AuthProvider } from "@/context/auth-context";
-
-// Prevent splash screen from auto-hiding
-SplashScreen.preventAutoHideAsync();
+import { MerchantProvider } from "@/context/merchant-context";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -25,9 +22,11 @@ export default function RootLayout() {
       <CustomThemeProvider>
         <ConfigProvider>
           <AuthProvider>
-            <SafeAreaProvider>
-              <Slot />
-            </SafeAreaProvider>
+            <MerchantProvider>
+              <SafeAreaProvider>
+                <Slot />
+              </SafeAreaProvider>
+            </MerchantProvider>
           </AuthProvider>
         </ConfigProvider>
       </CustomThemeProvider>
