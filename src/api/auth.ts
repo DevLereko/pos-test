@@ -117,6 +117,55 @@ export interface Merchant {
   assignedBy?: string;
 }
 
+export interface Transaction {
+  id: string;
+  reference: string;
+  merchantId: string;
+  deviceId: string;
+  customerPhone: string;
+  amount: number;
+  status: "pending" | "completed" | "failed" | "refunded";
+  responseCode?: string;
+  responseMessage?: string;
+  processedAt?: string;
+  ipAddress?: string;
+  createdAt: string;
+  updatedAt: string;
+  device?: {
+    deviceName: string;
+    terminalId: string;
+  };
+}
+
+export interface TransactionResponse {
+  message: string;
+  transactions: Transaction[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+  };
+  summary: {
+    totalAmount: number;
+    completedCount: number;
+    pendingCount: number;
+    failedCount: number;
+  };
+}
+
+export interface TransactionStats {
+  today: number;
+  total: number;
+  averageTicket: number;
+  completed: number;
+  pending: number;
+  failed: number;
+  refunded: number;
+}
+
 export const authApi = {
   signIn: async (data: SignInRequest): Promise<SignInResponse> => {
     return apiClient.post<SignInResponse>("/auth/sign-in", data, false);
@@ -171,12 +220,18 @@ export const authApi = {
   },
 
   getUserById: async (userId: string): Promise<User> => {
-    const response = await apiClient.get<GetUserResponse>(`/auth/user/${userId}`, true);
+    const response = await apiClient.get<GetUserResponse>(
+      `/auth/user/${userId}`,
+      true,
+    );
     return response.user;
   },
 
   getMerchantDevice: async (merchantId: string): Promise<MerchantDevice> => {
-    const response = await apiClient.get<{ message: string; device: MerchantDevice }>(`/portal/merchants/${merchantId}/device`, true);
+    const response = await apiClient.get<{
+      message: string;
+      device: MerchantDevice;
+    }>(`/portal/merchants/${merchantId}/device`, true);
     return response.device;
   },
 
@@ -199,6 +254,42 @@ export const authApi = {
       `/pos/devices/${deviceId}/test-printer`,
       {},
     );
+  },
+
+  getTransactions: async (
+    merchantId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      fromDate?: string;
+      toDate?: string;
+    },
+  ): Promise<TransactionResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", String(params.page));
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.status && params.status !== "All")
+      queryParams.append("status", params.status.toLowerCase());
+    if (params?.search) queryParams.append("search", params.search);
+    if (params?.fromDate) queryParams.append("fromDate", params.fromDate);
+    if (params?.toDate) queryParams.append("toDate", params.toDate);
+
+    const url = `/pos/transactions/merchant/${merchantId}${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+    return apiClient.get<TransactionResponse>(url);
+  },
+
+  getTransactionStats: async (
+    merchantId: string,
+  ): Promise<TransactionStats> => {
+    return apiClient.get<TransactionStats>(
+      `/pos/transactions/merchant/${merchantId}/stats`,
+    );
+  },
+
+  getTransactionById: async (transactionId: string): Promise<Transaction> => {
+    return apiClient.get<Transaction>(`/pos/transactions/${transactionId}`);
   },
 
   logout: async (): Promise<void> => {

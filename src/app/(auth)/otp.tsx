@@ -28,6 +28,7 @@ export default function OtpScreen() {
     showMerchantSelection,
     userMerchants,
     handleMerchantSelection,
+    setShowMerchantSelection,
   } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
@@ -242,7 +243,7 @@ style={[
         visible={showMerchantSelection}
         merchants={userMerchants}
         onSelect={handleMerchantSelection}
-        onClose={() => {}}
+        onClose={() => setShowMerchantSelection(false)}
         title="Select Merchant"
         subtitle="Choose which merchant to associate with this device"
       />

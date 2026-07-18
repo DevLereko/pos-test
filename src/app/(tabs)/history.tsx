@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Platform,
   Pressable,
@@ -6,6 +6,9 @@ import {
   StyleSheet,
   TextInput,
   View,
+  ActivityIndicator,
+  RefreshControl,
+  Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,102 +22,392 @@ import {
   VODACOM,
 } from "@/constants/theme";
 import { useTheme } from "@/context/theme-context";
+import { useAuth } from "@/context/auth-context";
+import { useMerchant } from "@/context/merchant-context";
+import { authApi, Transaction } from "@/api/auth";
 
-// Mock transaction data
-const mockTransactions = [
-  {
-    id: "1",
-    customer: "266 588 510 15",
-    amount: "M 320.00",
-    status: "Completed",
-    date: "2026-06-16 14:23",
-    type: "Payment",
-    reference: "TX-20260616-001",
-  },
-  {
-    id: "2",
-    customer: "266 690 204 88",
-    amount: "M 48.00",
-    status: "Completed",
-    date: "2026-06-16 13:45",
-    type: "Payment",
-    reference: "TX-20260616-002",
-  },
-  {
-    id: "3",
-    customer: "266 704 819 21",
-    amount: "M 126.50",
-    status: "Pending",
-    date: "2026-06-16 12:10",
-    type: "Payment",
-    reference: "TX-20260616-003",
-  },
-  {
-    id: "4",
-    customer: "266 502 338 92",
-    amount: "M 75.00",
-    status: "Failed",
-    date: "2026-06-15 17:30",
-    type: "Payment",
-    reference: "TX-20260615-004",
-  },
-  {
-    id: "5",
-    customer: "266 447 221 33",
-    amount: "M 540.00",
-    status: "Completed",
-    date: "2026-06-15 15:20",
-    type: "Refund",
-    reference: "RF-20260615-001",
-  },
-];
-
-const filterOptions = ["All", "Completed", "Pending", "Failed"];
+const filterOptions = ["All", "Completed", "Pending", "Failed", "Refunded"];
 
 export default function HistoryScreen() {
   const { colors, isDark } = useTheme();
+  const { merchantInfo } = useAuth();
+  const { selectedMerchant } = useMerchant();
   const insets = useSafeAreaInsets();
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("All");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [summary, setSummary] = useState({
+    totalAmount: 0,
+    completedCount: 0,
+    failedCount: 0,
+    pendingCount: 0,
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+  });
+  const [animatedValues, setAnimatedValues] = useState<{
+    [key: string]: Animated.Value;
+  }>({});
 
   const contentInset = {
     ...insets,
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
 
-  const filteredTransactions = mockTransactions.filter((tx) => {
-    const matchesSearch =
-      tx.customer.includes(searchQuery) ||
-      tx.reference.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter =
-      selectedFilter === "All" || tx.status === selectedFilter;
-    return matchesSearch && matchesFilter;
-  });
+  const getMerchantId = useCallback(() => {
+    return selectedMerchant?.id || merchantInfo?.id || merchantInfo?.merchantId;
+  }, [selectedMerchant, merchantInfo]);
+
+  const fetchTransactions = useCallback(
+    async (page = 1, refresh = false) => {
+      const merchantId = getMerchantId();
+      if (!merchantId) {
+        console.warn("No merchant ID available");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        if (page === 1 && !refresh) {
+          setIsLoading(true);
+        }
+
+        const response = await authApi.getTransactions(merchantId, {
+          page,
+          limit: 10,
+          status: selectedFilter === "All" ? undefined : selectedFilter,
+          search: searchQuery || undefined,
+        });
+
+        if (page === 1) {
+          setTransactions(response.transactions);
+          // Initialize animated values for new transactions
+          const newAnimatedValues: { [key: string]: Animated.Value } = {};
+          response.transactions.forEach((tx: Transaction) => {
+            newAnimatedValues[tx.id] = new Animated.Value(0);
+          });
+          setAnimatedValues(newAnimatedValues);
+        } else {
+          setTransactions((prev) => [...prev, ...response.transactions]);
+          // Add animated values for new transactions
+          const newAnimatedValues = { ...animatedValues };
+          response.transactions.forEach((tx: Transaction) => {
+            if (!newAnimatedValues[tx.id]) {
+              newAnimatedValues[tx.id] = new Animated.Value(0);
+            }
+          });
+          setAnimatedValues(newAnimatedValues);
+        }
+
+        setPagination({
+          page: response.pagination.page,
+          limit: response.pagination.limit,
+          total: response.pagination.total,
+          totalPages: response.pagination.totalPages,
+          hasNext: response.pagination.hasNext,
+          hasPrevious: response.pagination.hasPrevious,
+        });
+
+        if (response.summary) {
+          setSummary(response.summary);
+        }
+      } catch (error) {
+        console.error("Failed to fetch transactions:", error);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [getMerchantId, selectedFilter, searchQuery],
+  );
+
+  // Load data on mount and when filter/search changes
+  useEffect(() => {
+    fetchTransactions(1);
+  }, [selectedFilter, searchQuery]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchTransactions(1, true);
+  };
+
+  const handleLoadMore = () => {
+    if (pagination.hasNext && !isLoading) {
+      fetchTransactions(pagination.page + 1);
+    }
+  };
+
+  const toggleExpand = (transactionId: string) => {
+    const isExpanded = expandedId === transactionId;
+
+    // Animate the expansion
+    const animValue = animatedValues[transactionId];
+    if (animValue) {
+      Animated.spring(animValue, {
+        toValue: isExpanded ? 0 : 1,
+        useNativeDriver: false,
+        friction: 8,
+        tension: 40,
+      }).start();
+    }
+
+    setExpandedId(isExpanded ? null : transactionId);
+  };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed":
+    switch (status.toLowerCase()) {
+      case "completed":
         return VODACOM.green;
-      case "Pending":
+      case "pending":
         return VODACOM.gold;
-      case "Failed":
+      case "failed":
         return VODACOM.red;
+      case "refunded":
+        return "#8B5CF6";
       default:
         return VODACOM.greyDark;
     }
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "Completed":
+    switch (status.toLowerCase()) {
+      case "completed":
         return "checkmark.circle.fill";
-      case "Pending":
+      case "pending":
         return "clock.fill";
-      case "Failed":
+      case "failed":
         return "exclamationmark.circle.fill";
+      case "refunded":
+        return "arrow.uturn.left.circle.fill";
       default:
         return "circle.fill";
     }
+  };
+
+  const getStatusBgColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "completed":
+        return `${VODACOM.green}15`;
+      case "pending":
+        return `${VODACOM.gold}15`;
+      case "failed":
+        return `${VODACOM.red}15`;
+      case "refunded":
+        return `#8B5CF615`;
+      default:
+        return `${VODACOM.greyDark}15`;
+    }
+  };
+
+  const formatAmount = (amount: number | string) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    return `M ${num.toFixed(2)}`;
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString("en-LS", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatStatus = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getStatusCount = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "completed":
+        return summary.completedCount;
+      case "pending":
+        return summary.pendingCount;
+      case "failed":
+        return summary.failedCount;
+      default:
+        return 0;
+    }
+  };
+
+  const getDisplayMerchant = () => {
+    return (
+      selectedMerchant?.name ||
+      merchantInfo?.name ||
+      merchantInfo?.businessName ||
+      "N/A"
+    );
+  };
+
+  const getFilterCount = (filter: string) => {
+    if (filter === "All") return pagination.total;
+    return getStatusCount(filter);
+  };
+
+  // Render expanded details
+  const renderExpandedDetails = (transaction: Transaction) => {
+    const isExpanded = expandedId === transaction.id;
+    const animValue = animatedValues[transaction.id] || new Animated.Value(0);
+
+    const height = animValue.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 200],
+    });
+
+    const opacity = animValue.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+    });
+
+    if (!isExpanded) return null;
+
+    return (
+      <Animated.View
+        style={[
+          styles.expandedContainer,
+          {
+            height,
+            opacity,
+            backgroundColor: isDark ? colors.surfaceStrong : VODACOM.grey,
+          },
+        ]}
+      >
+        <View style={styles.expandedContent}>
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Reference
+            </ThemedText>
+            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
+              {transaction.reference}
+            </ThemedText>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Customer
+            </ThemedText>
+            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
+              {transaction.customerPhone}
+            </ThemedText>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Amount
+            </ThemedText>
+            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
+              {formatAmount(transaction.amount)}
+            </ThemedText>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Status
+            </ThemedText>
+            <View style={styles.expandedStatusBadge}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: getStatusColor(transaction.status) },
+                ]}
+              />
+              <ThemedText
+                style={[
+                  styles.expandedValue,
+                  { color: getStatusColor(transaction.status) },
+                ]}
+              >
+                {formatStatus(transaction.status)}
+              </ThemedText>
+            </View>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Response
+            </ThemedText>
+            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
+              {transaction.responseMessage || "N/A"}
+            </ThemedText>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Response Code
+            </ThemedText>
+            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
+              {transaction.responseCode || "N/A"}
+            </ThemedText>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Device
+            </ThemedText>
+            <ThemedText
+              style={[styles.expandedValue, { color: colors.text }]}
+              numberOfLines={1}
+            >
+              {transaction.device?.deviceName || "N/A"} • Terminal{" "}
+              {transaction.device?.terminalId || "N/A"}
+            </ThemedText>
+          </View>
+
+          <View style={styles.expandedRow}>
+            <ThemedText
+              style={[styles.expandedLabel, { color: colors.textSecondary }]}
+            >
+              Processed At
+            </ThemedText>
+            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
+              {transaction.processedAt
+                ? formatDate(transaction.processedAt)
+                : "N/A"}
+            </ThemedText>
+          </View>
+
+          {transaction.ipAddress && (
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                IP Address
+              </ThemedText>
+              <ThemedText
+                style={[styles.expandedValue, { color: colors.text }]}
+              >
+                {transaction.ipAddress}
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    );
   };
 
   return (
@@ -122,6 +415,14 @@ export default function HistoryScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, contentInset]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={VODACOM.red}
+            colors={[VODACOM.red]}
+          />
+        }
       >
         <View style={styles.shell}>
           {/* Header */}
@@ -131,12 +432,12 @@ export default function HistoryScreen() {
                 type="title"
                 style={[styles.headerTitle, { color: colors.text }]}
               >
-                Transaction History
+                Transactions
               </ThemedText>
               <ThemedText
                 style={[styles.headerSubtitle, { color: colors.textSecondary }]}
               >
-                View all your transactions
+                {getDisplayMerchant()}
               </ThemedText>
             </View>
             <Pressable style={styles.filterButton}>
@@ -165,7 +466,7 @@ export default function HistoryScreen() {
             />
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
-              placeholder="Search by number or reference"
+              placeholder="Search by customer or reference"
               placeholderTextColor={colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -188,36 +489,53 @@ export default function HistoryScreen() {
             style={styles.filterScroll}
           >
             <View style={styles.filterContainer}>
-              {filterOptions.map((filter) => (
-                <Pressable
-                  key={filter}
-                  onPress={() => setSelectedFilter(filter)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: isDark
-                        ? colors.surfaceStrong
-                        : VODACOM.light,
-                    },
-                    selectedFilter === filter && styles.filterChipActive,
-                  ]}
-                >
-                  <ThemedText
+              {filterOptions.map((filter) => {
+                const count = getFilterCount(filter);
+                return (
+                  <Pressable
+                    key={filter}
+                    onPress={() => setSelectedFilter(filter)}
                     style={[
-                      styles.filterChipText,
+                      styles.filterChip,
                       {
-                        color:
-                          selectedFilter === filter
-                            ? VODACOM.light
-                            : colors.textSecondary,
+                        backgroundColor: isDark
+                          ? colors.surfaceStrong
+                          : VODACOM.light,
                       },
-                      selectedFilter === filter && styles.filterChipTextActive,
+                      selectedFilter === filter && styles.filterChipActive,
                     ]}
                   >
-                    {filter}
-                  </ThemedText>
-                </Pressable>
-              ))}
+                    <ThemedText
+                      style={[
+                        styles.filterChipText,
+                        {
+                          color:
+                            selectedFilter === filter
+                              ? VODACOM.light
+                              : colors.textSecondary,
+                        },
+                      ]}
+                    >
+                      {filter}
+                      {count > 0 && (
+                        <ThemedText
+                          style={[
+                            styles.filterChipCount,
+                            {
+                              color:
+                                selectedFilter === filter
+                                  ? VODACOM.light
+                                  : colors.textSecondary,
+                            },
+                          ]}
+                        >
+                          {` (${count})`}
+                        </ThemedText>
+                      )}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
             </View>
           </ScrollView>
 
@@ -225,18 +543,24 @@ export default function HistoryScreen() {
           <View
             style={[styles.statsContainer, { backgroundColor: colors.surface }]}
           >
+            <View
+              style={[
+                styles.statDivider,
+                { backgroundColor: isDark ? colors.surfaceStrong : "#E2E8F0" },
+              ]}
+            />
             <View style={styles.statItem}>
               <ThemedText
                 type="small"
                 style={[styles.statLabel, { color: colors.textSecondary }]}
               >
-                Today
+                Completed
               </ThemedText>
               <ThemedText
                 type="subtitle"
-                style={[styles.statValue, { color: colors.text }]}
+                style={[styles.statValue, { color: VODACOM.green }]}
               >
-                M 494.50
+                {summary.completedCount}
               </ThemedText>
             </View>
             <View
@@ -250,13 +574,13 @@ export default function HistoryScreen() {
                 type="small"
                 style={[styles.statLabel, { color: colors.textSecondary }]}
               >
-                Transactions
+                Pending
               </ThemedText>
               <ThemedText
                 type="subtitle"
-                style={[styles.statValue, { color: colors.text }]}
+                style={[styles.statValue, { color: VODACOM.gold }]}
               >
-                8
+                {summary.pendingCount}
               </ThemedText>
             </View>
             <View
@@ -270,13 +594,13 @@ export default function HistoryScreen() {
                 type="small"
                 style={[styles.statLabel, { color: colors.textSecondary }]}
               >
-                Avg. Ticket
+                Failed
               </ThemedText>
               <ThemedText
                 type="subtitle"
-                style={[styles.statValue, { color: colors.text }]}
+                style={[styles.statValue, { color: VODACOM.red }]}
               >
-                M 219
+                {summary.failedCount}
               </ThemedText>
             </View>
           </View>
@@ -288,7 +612,16 @@ export default function HistoryScreen() {
               { backgroundColor: colors.surface },
             ]}
           >
-            {filteredTransactions.length === 0 ? (
+            {isLoading && transactions.length === 0 ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={VODACOM.red} />
+                <ThemedText
+                  style={[styles.emptyStateText, { color: colors.text }]}
+                >
+                  Loading transactions...
+                </ThemedText>
+              </View>
+            ) : transactions.length === 0 ? (
               <View style={styles.emptyState}>
                 <AppSymbol
                   name={{ ios: "doc.text.magnifyingglass", android: "search" }}
@@ -310,103 +643,135 @@ export default function HistoryScreen() {
                 </ThemedText>
               </View>
             ) : (
-              filteredTransactions.map((tx, index) => (
-                <Pressable
-                  key={tx.id}
-                  style={({ pressed }) => [
-                    styles.transactionItem,
-                    pressed && styles.pressed,
-                    index < filteredTransactions.length - 1 && [
-                      styles.transactionBorder,
-                      {
-                        borderBottomColor: isDark
-                          ? colors.surfaceStrong
-                          : "#F1F5F9",
-                      },
-                    ],
-                  ]}
-                >
-                  <View style={styles.transactionLeft}>
-                    <View
-                      style={[
-                        styles.transactionIcon,
-                        { backgroundColor: `${getStatusColor(tx.status)}15` },
+              transactions.map((tx, index) => {
+                const isExpanded = expandedId === tx.id;
+                const statusColor = getStatusColor(tx.status);
+
+                return (
+                  <View key={tx.id}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.transactionItem,
+                        pressed && styles.pressed,
+                        isExpanded && styles.transactionItemExpanded,
+                        index < transactions.length - 1 && [
+                          styles.transactionBorder,
+                          {
+                            borderBottomColor: isDark
+                              ? colors.surfaceStrong
+                              : "#F1F5F9",
+                          },
+                        ],
                       ]}
+                      onPress={() => toggleExpand(tx.id)}
                     >
-                      <AppSymbol
-                        name={getStatusIcon(tx.status) as any}
-                        size={20}
-                        tintColor={getStatusColor(tx.status)}
-                      />
-                    </View>
-                    <View>
-                      <ThemedText
-                        type="smallBold"
-                        style={[styles.customerText, { color: colors.text }]}
-                      >
-                        {tx.customer}
-                      </ThemedText>
-                      <View style={styles.transactionMeta}>
-                        <ThemedText
-                          type="small"
-                          style={[
-                            styles.referenceText,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          {tx.reference}
-                        </ThemedText>
+                      <View style={styles.transactionLeft}>
                         <View
                           style={[
-                            styles.metaDot,
-                            { backgroundColor: colors.textSecondary },
-                          ]}
-                        />
-                        <ThemedText
-                          type="small"
-                          style={[
-                            styles.dateText,
-                            { color: colors.textSecondary },
+                            styles.transactionIcon,
+                            { backgroundColor: `${statusColor}15` },
                           ]}
                         >
-                          {tx.date}
-                        </ThemedText>
+                          <AppSymbol
+                            name={getStatusIcon(tx.status) as any}
+                            size={20}
+                            tintColor={statusColor}
+                          />
+                        </View>
+                        <View style={styles.transactionMain}>
+                          <ThemedText
+                            type="smallBold"
+                            style={[
+                              styles.customerText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {tx.customerPhone}
+                          </ThemedText>
+                          <View style={styles.transactionMeta}>
+                            <ThemedText
+                              type="small"
+                              style={[
+                                styles.referenceText,
+                                { color: colors.textSecondary },
+                              ]}
+                            >
+                              {tx.reference}
+                            </ThemedText>
+                            <View
+                              style={[
+                                styles.metaDot,
+                                { backgroundColor: colors.textSecondary },
+                              ]}
+                            />
+                            <ThemedText
+                              type="small"
+                              style={[
+                                styles.dateText,
+                                { color: colors.textSecondary },
+                              ]}
+                            >
+                              {formatDate(tx.createdAt)}
+                            </ThemedText>
+                          </View>
+                          {tx.device && (
+                            <ThemedText
+                              type="small"
+                              style={[
+                                styles.deviceText,
+                                { color: colors.textSecondary },
+                              ]}
+                            >
+                              {tx.device.deviceName} • Terminal{" "}
+                              {tx.device.terminalId}
+                            </ThemedText>
+                          )}
+                        </View>
                       </View>
-                    </View>
+                      <View style={styles.transactionRight}>
+                        <ThemedText
+                          type="subtitle"
+                          style={[styles.amountText, { color: colors.text }]}
+                        >
+                          {formatAmount(tx.amount)}
+                        </ThemedText>
+                        <View style={styles.statusBadge}>
+                          <View
+                            style={[
+                              styles.statusDot,
+                              { backgroundColor: statusColor },
+                            ]}
+                          />
+                          <ThemedText
+                            type="small"
+                            style={[styles.statusText, { color: statusColor }]}
+                          >
+                            {formatStatus(tx.status)}
+                          </ThemedText>
+                        </View>
+                        <View style={styles.expandIndicator}>
+                          <AppSymbol
+                            name={isExpanded ? "chevron.up" : "chevron.down"}
+                            size={14}
+                            tintColor={colors.textSecondary}
+                          />
+                        </View>
+                      </View>
+                    </Pressable>
+
+                    {/* Expanded Details */}
+                    {renderExpandedDetails(tx)}
                   </View>
-                  <View style={styles.transactionRight}>
-                    <ThemedText
-                      type="subtitle"
-                      style={[styles.amountText, { color: colors.text }]}
-                    >
-                      {tx.amount}
-                    </ThemedText>
-                    <View style={styles.statusBadge}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: getStatusColor(tx.status) },
-                        ]}
-                      />
-                      <ThemedText
-                        type="small"
-                        style={[
-                          styles.statusText,
-                          { color: getStatusColor(tx.status) },
-                        ]}
-                      >
-                        {tx.status}
-                      </ThemedText>
-                    </View>
-                  </View>
-                </Pressable>
-              ))
+                );
+              })
             )}
           </View>
 
           {/* Load More */}
-          {filteredTransactions.length > 0 && (
+          {transactions.length > 0 && pagination.hasNext && (
             <Pressable
+              onPress={handleLoadMore}
+              disabled={isLoading}
               style={[
                 styles.loadMoreButton,
                 {
@@ -415,15 +780,34 @@ export default function HistoryScreen() {
                 },
               ]}
             >
-              <ThemedText style={[styles.loadMoreText, { color: VODACOM.red }]}>
-                Load More
-              </ThemedText>
-              <AppSymbol
-                name={{ ios: "arrow.down.circle", android: "expand_more" }}
-                size={16}
-                tintColor={VODACOM.red}
-              />
+              {isLoading ? (
+                <ActivityIndicator size="small" color={VODACOM.red} />
+              ) : (
+                <>
+                  <ThemedText
+                    style={[styles.loadMoreText, { color: VODACOM.red }]}
+                  >
+                    Load More
+                  </ThemedText>
+                  <AppSymbol
+                    name={{ ios: "arrow.down.circle", android: "expand_more" }}
+                    size={16}
+                    tintColor={VODACOM.red}
+                  />
+                </>
+              )}
             </Pressable>
+          )}
+
+          {/* Footer Info */}
+          {transactions.length > 0 && (
+            <View style={styles.footerInfo}>
+              <ThemedText
+                style={[styles.footerInfoText, { color: colors.textSecondary }]}
+              >
+                Showing {transactions.length} of {pagination.total} transactions
+              </ThemedText>
+            </View>
           )}
         </View>
       </ScrollView>
@@ -499,8 +883,8 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: 14,
   },
-  filterChipTextActive: {
-    color: VODACOM.light,
+  filterChipCount: {
+    fontSize: 12,
   },
   statsContainer: {
     flexDirection: "row",
@@ -515,13 +899,17 @@ const styles = StyleSheet.create({
   },
   statItem: {
     alignItems: "center",
+    flex: 1,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
+    marginTop: 2,
   },
   statDivider: {
     width: 1,
@@ -541,6 +929,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
   },
+  transactionItemExpanded: {
+    borderBottomWidth: 0,
+  },
   transactionBorder: {
     borderBottomWidth: 1,
   },
@@ -557,6 +948,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  transactionMain: {
+    flex: 1,
+  },
   customerText: {
     fontSize: 14,
   },
@@ -564,9 +958,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flexWrap: "wrap",
   },
   referenceText: {
     fontSize: 12,
+  },
+  deviceText: {
+    fontSize: 11,
+    marginTop: 1,
   },
   metaDot: {
     width: 3,
@@ -578,7 +977,7 @@ const styles = StyleSheet.create({
   },
   transactionRight: {
     alignItems: "flex-end",
-    gap: 4,
+    gap: 3,
   },
   amountText: {
     fontSize: 16,
@@ -597,8 +996,45 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
   },
+  expandIndicator: {
+    marginTop: 2,
+  },
   pressed: {
     opacity: 0.7,
+  },
+  // Expanded Details
+  expandedContainer: {
+    overflow: "hidden",
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  expandedContent: {
+    padding: Spacing.three,
+    gap: 6,
+  },
+  expandedRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  expandedLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  expandedValue: {
+    fontSize: 12,
+    fontWeight: "500",
+    maxWidth: "60%",
+  },
+  expandedStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  loadingContainer: {
+    alignItems: "center",
+    paddingVertical: 40,
+    gap: 16,
   },
   emptyState: {
     alignItems: "center",
@@ -624,5 +1060,12 @@ const styles = StyleSheet.create({
   loadMoreText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  footerInfo: {
+    alignItems: "center",
+    paddingVertical: Spacing.two,
+  },
+  footerInfoText: {
+    fontSize: 12,
   },
 });

@@ -116,9 +116,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       setShowMerchantSelection(false);
+      setIsAuthenticated(true);
 
-      // Navigate to tabs after merchant selection
-      router.replace("/(tabs)");
+      // Navigate after state updates complete
+      setTimeout(() => {
+        router.replace("/(tabs)");
+      }, 0);
     } catch (error) {
       console.error("Failed to select merchant:", error);
     }
