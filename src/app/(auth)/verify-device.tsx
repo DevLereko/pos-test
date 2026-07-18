@@ -1,3 +1,4 @@
+// src/app/(auth)/verify-device.tsx
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
@@ -20,6 +21,7 @@ export default function VerifyDeviceScreen() {
   const [deviceInfo, setDeviceInfo] = useState<any>(null);
   const [merchantInfo, setMerchantInfo] = useState<any>(null);
   const [deviceDetails, setDeviceDetails] = useState<any>(null);
+  const [verificationData, setVerificationData] = useState<any>(null);
 
   const verifyDevice = async () => {
     try {
@@ -48,6 +50,7 @@ export default function VerifyDeviceScreen() {
         deviceModel: deviceInfo.deviceModel,
         serialNumber: deviceInfo.serialNumber,
       };
+      setVerificationData(verificationData);
 
       // Send verification request
       const response = await authApi.verifyDevice(verificationData);
@@ -72,7 +75,10 @@ export default function VerifyDeviceScreen() {
       try {
         const merchant = await authApi.getMerchantDevice(response.merchantId);
         setMerchantInfo(merchant);
-        await SecureStore.setItemAsync("merchantInfo", JSON.stringify(merchant));
+        await SecureStore.setItemAsync(
+          "merchantInfo",
+          JSON.stringify(merchant),
+        );
       } catch (merchantError) {
         console.warn("Failed to fetch merchant info:", merchantError);
         setMerchantInfo({ merchantId: response.merchantId });
@@ -109,7 +115,9 @@ export default function VerifyDeviceScreen() {
   };
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
       <View style={styles.content}>
         {/* Logo */}
         <View style={styles.logoContainer}>
@@ -163,6 +171,21 @@ export default function VerifyDeviceScreen() {
                         { color: colors.textSecondary },
                       ]}
                     >
+                      Device ID:
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.deviceInfoValue, { color: colors.text }]}
+                    >
+                      {deviceDetails.deviceId}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.deviceInfoRow}>
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
                       Model:
                     </ThemedText>
                     <ThemedText
@@ -193,12 +216,12 @@ export default function VerifyDeviceScreen() {
                         { color: colors.textSecondary },
                       ]}
                     >
-                      Device ID:
+                      Serial Number:
                     </ThemedText>
                     <ThemedText
                       style={[styles.deviceInfoValue, { color: colors.text }]}
                     >
-                      {deviceDetails.deviceId.substring(0, 8)}...
+                      {deviceDetails.deviceId}
                     </ThemedText>
                   </View>
                 </View>
@@ -229,6 +252,102 @@ export default function VerifyDeviceScreen() {
               >
                 {error}
               </ThemedText>
+
+              {/* Show device details that were sent */}
+              {deviceDetails && verificationData && (
+                <View
+                  style={[
+                    styles.deviceInfo,
+                    { backgroundColor: colors.surface, marginTop: 8 },
+                  ]}
+                >
+                  <ThemedText
+                    style={[styles.deviceInfoTitle, { color: colors.text }]}
+                  >
+                    Device Details Sent
+                  </ThemedText>
+                  <View style={styles.deviceInfoRow}>
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Device ID:
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.deviceInfoValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {verificationData.deviceId || "N/A"}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.deviceInfoRow}>
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      OS Version:
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.deviceInfoValue, { color: colors.text }]}
+                    >
+                      {verificationData.osVersion || "N/A"}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.deviceInfoRow}>
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Device Model:
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.deviceInfoValue, { color: colors.text }]}
+                    >
+                      {verificationData.deviceModel || "N/A"}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.deviceInfoRow}>
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Serial Number:
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.deviceInfoValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {verificationData.serialNumber || "N/A"}
+                    </ThemedText>
+                  </View>
+
+                  {/* Show what the backend might be expecting */}
+                  <View style={styles.divider} />
+                  <ThemedText
+                    style={[
+                      styles.deviceInfoLabel,
+                      {
+                        color: colors.textSecondary,
+                        fontSize: 11,
+                        textAlign: "center",
+                      },
+                    ]}
+                  >
+                    Check if these values match what's registered in the
+                    backend. Device ID should match the one stored for this
+                    merchant.
+                  </ThemedText>
+                </View>
+              )}
+
               <Pressable
                 style={[styles.retryButton, { backgroundColor: VODACOM.red }]}
                 onPress={handleRetry}
@@ -289,7 +408,9 @@ export default function VerifyDeviceScreen() {
                     ]}
                   >
                     Merchant:{" "}
-                    {merchantInfo?.businessName || merchantInfo?.firstName}
+                    {merchantInfo?.businessName ||
+                      merchantInfo?.name ||
+                      "Loading..."}
                   </ThemedText>
                 </View>
               )}
@@ -395,7 +516,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   deviceInfoTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
     textAlign: "center",
     marginBottom: 4,
@@ -406,15 +527,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   deviceInfoLabel: {
-    fontSize: 14,
+    fontSize: 13,
   },
   deviceInfoValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
+    maxWidth: "60%",
   },
   deviceInfoDetail: {
     fontSize: 14,
     textAlign: "center",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#E2E8F0",
+    marginVertical: 8,
   },
   footer: {
     alignItems: "center",

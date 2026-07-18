@@ -10,7 +10,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "UIDeviceFamily": [1, 2]
+        "UIDeviceFamily": [
+          1,
+          2
+        ]
       }
     },
     "android": {
@@ -25,7 +28,8 @@
         "android.permission.READ_PHONE_STATE",
         "android.permission.READ_PRIVILEGED_PHONE_STATE",
         "android.permission.READ_SERIAL"
-      ]
+      ],
+      "package": "com.devlereko.merchantposapp"
     },
     "web": {
       "output": "static",
@@ -62,6 +66,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f4d15967-c41d-40a1-9f23-79441e21f660"
+      }
+    },
+    "owner": "devlereko"
   }
 }
