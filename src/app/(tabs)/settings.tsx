@@ -1027,7 +1027,6 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     gap: Spacing.two,
-    marginTop: Spacing.two,
   },
   logoutButton: {
     flexDirection: "row",

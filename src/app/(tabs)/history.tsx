@@ -60,7 +60,7 @@ export default function HistoryScreen() {
 
   const contentInset = {
     ...insets,
-    bottom: insets.bottom + BottomTabInset + Spacing.four,
+    bottom: insets.bottom + BottomTabInset + Spacing.five,
   };
 
   const getMerchantId = useCallback(() => {
