@@ -90,7 +90,6 @@ export default function HistoryScreen() {
 
         if (page === 1) {
           setTransactions(response.transactions);
-          // Initialize animated values for new transactions
           const newAnimatedValues: { [key: string]: Animated.Value } = {};
           response.transactions.forEach((tx: Transaction) => {
             newAnimatedValues[tx.id] = new Animated.Value(0);
@@ -98,7 +97,6 @@ export default function HistoryScreen() {
           setAnimatedValues(newAnimatedValues);
         } else {
           setTransactions((prev) => [...prev, ...response.transactions]);
-          // Add animated values for new transactions
           const newAnimatedValues = { ...animatedValues };
           response.transactions.forEach((tx: Transaction) => {
             if (!newAnimatedValues[tx.id]) {
@@ -130,7 +128,6 @@ export default function HistoryScreen() {
     [getMerchantId, selectedFilter, searchQuery],
   );
 
-  // Load data on mount and when filter/search changes
   useEffect(() => {
     fetchTransactions(1);
   }, [selectedFilter, searchQuery]);
@@ -149,7 +146,6 @@ export default function HistoryScreen() {
   const toggleExpand = (transactionId: string) => {
     const isExpanded = expandedId === transactionId;
 
-    // Animate the expansion
     const animValue = animatedValues[transactionId];
     if (animValue) {
       Animated.spring(animValue, {
@@ -190,21 +186,6 @@ export default function HistoryScreen() {
         return "arrow.uturn.left.circle.fill";
       default:
         return "circle.fill";
-    }
-  };
-
-  const getStatusBgColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "completed":
-        return `${VODACOM.green}15`;
-      case "pending":
-        return `${VODACOM.gold}15`;
-      case "failed":
-        return `${VODACOM.red}15`;
-      case "refunded":
-        return `#8B5CF615`;
-      default:
-        return `${VODACOM.greyDark}15`;
     }
   };
 
@@ -250,12 +231,19 @@ export default function HistoryScreen() {
     );
   };
 
+  const getDisplayMerchantCode = () => {
+    return (
+      <ThemedText style={{ color: colors.textSecondary, fontSize: 12 }}>
+        {selectedMerchant?.code || merchantInfo?.code || "N/A"}
+      </ThemedText>
+    );
+  };
+
   const getFilterCount = (filter: string) => {
     if (filter === "All") return pagination.total;
     return getStatusCount(filter);
   };
 
-// Render expanded details
   const renderExpandedDetails = (transaction: Transaction) => {
     const isExpanded = expandedId === transaction.id;
     const animValue = animatedValues[transaction.id] || new Animated.Value(0);
@@ -466,7 +454,7 @@ export default function HistoryScreen() {
               <ThemedText
                 style={[styles.headerSubtitle, { color: colors.textSecondary }]}
               >
-                {getDisplayMerchant()}
+                {getDisplayMerchant()} - {getDisplayMerchantCode()}
               </ThemedText>
             </View>
             <Pressable style={styles.filterButton}>
