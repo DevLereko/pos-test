@@ -233,7 +233,7 @@ export default function HistoryScreen() {
 
   const getDisplayMerchantCode = () => {
     return (
-      <ThemedText style={{ color: colors.textSecondary, fontSize: 12 }}>
+      <ThemedText style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>
         {selectedMerchant?.code || merchantInfo?.code || "N/A"}
       </ThemedText>
     );
