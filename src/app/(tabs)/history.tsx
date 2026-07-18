@@ -543,12 +543,6 @@ export default function HistoryScreen() {
           <View
             style={[styles.statsContainer, { backgroundColor: colors.surface }]}
           >
-            <View
-              style={[
-                styles.statDivider,
-                { backgroundColor: isDark ? colors.surfaceStrong : "#E2E8F0" },
-              ]}
-            />
             <View style={styles.statItem}>
               <ThemedText
                 type="small"
