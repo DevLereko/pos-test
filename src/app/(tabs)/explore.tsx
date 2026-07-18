@@ -303,17 +303,17 @@ export default function ExploreScreen() {
 
           {/* Footer */}
           <View style={styles.footer}>
-                      <ThemedText
-                        style={[styles.footerText, { color: colors.textSecondary }]}
-                      >
-                        M-Pesa POS v2.0.0
-                      </ThemedText>
-                      <ThemedText
-                        style={[styles.footerSubtext, { color: colors.textSecondary }]}
-                      >
-                        Vodacom Lesotho
-                      </ThemedText>
-                    </View>
+            <ThemedText
+              style={[styles.footerText, { color: colors.textSecondary }]}
+            >
+              M-Pesa POS v2.0.0
+            </ThemedText>
+            <ThemedText
+              style={[styles.footerSubtext, { color: colors.textSecondary }]}
+            >
+              Vodacom Lesotho
+            </ThemedText>
+          </View>
         </View>
       </ScrollView>
     </ThemedView>

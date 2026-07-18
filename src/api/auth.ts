@@ -166,6 +166,19 @@ export interface TransactionStats {
   refunded: number;
 }
 
+export interface ProcessTransactionRequest {
+  merchantId: string;
+  deviceId: string;
+  customerPhone: string;
+  amount: number;
+}
+
+export interface ProcessTransactionResponse {
+  message: string;
+  transaction: Transaction;
+  requiresPin: boolean;
+}
+
 export const authApi = {
   signIn: async (data: SignInRequest): Promise<SignInResponse> => {
     return apiClient.post<SignInResponse>("/auth/sign-in", data, false);
@@ -245,6 +258,25 @@ export const authApi = {
 
   syncDevice: async (deviceId: string): Promise<POSDevice> => {
     return apiClient.post<POSDevice>(`/pos/devices/${deviceId}/sync`, {});
+  },
+
+  processTransaction: async (
+    data: ProcessTransactionRequest,
+  ): Promise<ProcessTransactionResponse> => {
+    return apiClient.post<ProcessTransactionResponse>(
+      "/pos/transactions/process",
+      data,
+    );
+  },
+
+  getRecentTransactions: async (
+    merchantId: string,
+    limit: number = 5,
+  ): Promise<Transaction[]> => {
+    const response = await apiClient.get<TransactionResponse>(
+      `/pos/transactions/merchant/${merchantId}?limit=${limit}&page=1`,
+    );
+    return response.transactions;
   },
 
   testPrinter: async (

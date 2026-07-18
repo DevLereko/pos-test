@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Alert,
   Animated,
@@ -10,6 +10,7 @@ import {
   TextInput,
   useColorScheme,
   View,
+  ActivityIndicator,
 } from "react-native";
 import {
   SafeAreaView,
@@ -19,57 +20,68 @@ import {
 import { AppSymbol } from "@/components/app-symbol";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { PinPrompt } from "@/components/pin-prompt";
 import {
   BottomTabInset,
   MaxContentWidth,
   Spacing,
   VODACOM,
 } from "@/constants/theme";
+import { useAuth } from "@/context/auth-context";
 import { useConfig } from "@/context/config-context";
+import { useMerchant } from "@/context/merchant-context";
 import { useTheme } from "@/context/theme-context";
-import { PinPrompt } from "@/components/pin-prompt";
-
-// Mock data
-const stats = [
-  { label: "Today's Sales", value: "M 18,420", icon: "chart.bar.fill" },
-  { label: "Transactions", value: "84", icon: "doc.text.fill" },
-  { label: "Average Ticket", value: "M 219", icon: "creditcard.fill" },
-];
-
-const quickActions = [
-  { icon: "qrcode", label: "Scan QR", route: "/scan" },
-  { icon: "clock.arrow.circlepath", label: "History", route: "/history" },
-  { icon: "printer", label: "Print", route: "/print" },
-  { icon: "gear", label: "Settings", route: "/settings" },
-];
-
-const recentSales = [
-  { customer: "266 588 510 15", amount: "M 320.00", status: "Completed" },
-  { customer: "266 690 204 88", amount: "M 48.00", status: "Completed" },
-  { customer: "266 704 819 21", amount: "M 126.50", status: "Pending" },
-];
+import { authApi, Transaction } from "@/api/auth";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
   const { config } = useConfig();
+  const { user, deviceConfig } = useAuth();
+  const { selectedMerchant } = useMerchant();
   const isDark = useColorScheme() === "dark";
 
   const [mobile, setMobile] = useState("266");
   const [amount, setAmount] = useState("");
-  const [statusMessage, setStatusMessage] = useState("Ready for the next sale");
+  const [statusMessage, setStatusMessage] = useState("Ready");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showPinPrompt, setShowPinPrompt] = useState(false);
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinError, setPinError] = useState<string | null>(null);
   const [isPinLoading, setIsPinLoading] = useState(false);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(
+    [],
+  );
+  const [loadingRecent, setLoadingRecent] = useState(true);
   const scaleAnim = useState(new Animated.Value(1))[0];
 
   const contentInset = {
     ...insets,
     bottom: insets.bottom + BottomTabInset + Spacing.four,
   };
+
+  const merchantId = selectedMerchant?.id || config?.merchant?.id;
+  const deviceId = deviceConfig?.id;
+
+  const loadRecentTransactions = async () => {
+    try {
+      setLoadingRecent(true);
+      const response = await authApi.getRecentTransactions(merchantId, 5);
+      setRecentTransactions(response);
+    } catch (error) {
+      console.error("Failed to load recent transactions:", error);
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
+
+  // Load recent transactions
+  useEffect(() => {
+    if (merchantId) {
+      loadRecentTransactions();
+    }
+  }, [merchantId]);
 
   const handleMobileChange = (value: string) => {
     const digits = value.replace(/\D/g, "");
@@ -113,15 +125,9 @@ export default function HomeScreen() {
     ]).start();
   };
 
-  const handleQuickAction = (route: string) => {
-    if (route) {
-      router.push(route as any);
-    }
-  };
-
   const handlePayNow = () => {
-    if (!mobile || !amount) {
-      Alert.alert("Error", "Please enter both mobile number and amount");
+    if (!amount || amount.trim() === "") {
+      Alert.alert("Error", "Please enter the amount");
       return;
     }
 
@@ -130,57 +136,87 @@ export default function HomeScreen() {
       return;
     }
 
+    const phoneDigits = mobile.replace("266", "");
+    if (!phoneDigits || phoneDigits.length < 8) {
+      Alert.alert("Error", "Please enter a valid phone number");
+      return;
+    }
+
+    // Validate merchant and device
+    if (!merchantId) {
+      Alert.alert(
+        "Error",
+        "No merchant selected. Please configure your device.",
+      );
+      return;
+    }
+
+    if (!deviceId) {
+      Alert.alert("Error", "No device found. Please contact support.");
+      return;
+    }
+
     setShowPinPrompt(true);
     setPinError(null);
   };
 
-  const handlePinConfirm = (pin: string) => {
+  const handlePinConfirm = async (pin: string) => {
     setIsPinLoading(true);
     setPinError(null);
 
-    setTimeout(() => {
-      const correctPin = "1234";
+    try {
+      const response = await authApi.processTransaction({
+        merchantId,
+        deviceId,
+        customerPhone: mobile.startsWith("266") ? mobile : `266${mobile}`,
+        amount: parseFloat(amount),
+      });
 
-      if (pin === correctPin) {
-        setShowPinPrompt(false);
-        setIsPinLoading(false);
-        processTransaction();
-      } else {
-        const newAttempts = pinAttempts + 1;
-        setPinAttempts(newAttempts);
+      setShowPinPrompt(false);
+      setIsPinLoading(false);
+      processTransaction(response);
+    } catch (error: any) {
+      const newAttempts = pinAttempts + 1;
+      setPinAttempts(newAttempts);
 
-        if (newAttempts >= 3) {
-          setPinError("Too many failed attempts. Please try again later.");
-          setTimeout(() => {
-            setShowPinPrompt(false);
-            setPinAttempts(0);
-            setPinError(null);
-            setIsPinLoading(false);
-          }, 3000);
-        } else {
-          setPinError(`Invalid PIN. ${3 - newAttempts} attempts remaining.`);
+      if (newAttempts >= 3) {
+        setPinError("Too many failed attempts. Please try again later.");
+        setTimeout(() => {
+          setShowPinPrompt(false);
+          setPinAttempts(0);
+          setPinError(null);
           setIsPinLoading(false);
-        }
+        }, 3000);
+      } else {
+        setPinError(
+          `Transaction failed: ${error.message || "Please try again"}. ${3 - newAttempts} attempts remaining.`,
+        );
+        setIsPinLoading(false);
       }
-    }, 1500);
+    }
   };
 
-  const processTransaction = () => {
+  const processTransaction = (response: any) => {
     animateButton();
     setIsProcessing(true);
-    const finalAmount = amount ? `M ${amount}` : "an amount";
-    setStatusMessage(`Processing transaction for ${mobile}...`);
+    setStatusMessage(`Processing...`);
 
     setTimeout(() => {
-      setStatusMessage(
-        `✓ Transaction of ${finalAmount} completed successfully`,
-      );
+      setStatusMessage(`✓ Complete`);
       setIsProcessing(false);
       setAmount("");
       setMobile("266");
       setPinAttempts(0);
       setPinError(null);
-    }, 2000);
+
+      loadRecentTransactions();
+
+      Alert.alert(
+        "Transaction Complete",
+        `Amount: M ${amount}\nCustomer: ${mobile}\nReference: ${response.transaction?.reference || "N/A"}`,
+        [{ text: "OK" }],
+      );
+    }, 1000);
   };
 
   const handlePinCancel = () => {
@@ -191,14 +227,49 @@ export default function HomeScreen() {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed":
+    switch (status.toLowerCase()) {
+      case "completed":
         return VODACOM.green;
-      case "Pending":
+      case "pending":
         return VODACOM.gold;
-      default:
+      case "failed":
         return VODACOM.red;
+      default:
+        return VODACOM.greyDark;
     }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "completed":
+        return "checkmark.circle.fill";
+      case "pending":
+        return "clock.fill";
+      case "failed":
+        return "exclamationmark.circle.fill";
+      default:
+        return "circle.fill";
+    }
+  };
+
+  const formatAmount = (amount: number | string) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    return `M ${num.toFixed(2)}`;
+  };
+
+  const getMerchantName = () => {
+    return selectedMerchant?.name || config?.merchant?.name || "Merchant";
+  };
+
+  const getMerchantCode = () => {
+    return selectedMerchant?.code || "0000";
+  }
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
   };
 
   return (
@@ -210,177 +281,23 @@ export default function HomeScreen() {
           contentContainerStyle={[styles.scrollContent, contentInset]}
         >
           <View style={styles.shell}>
-            {/* Integrated Header */}
+            {/* Header */}
             <View style={styles.headerSection}>
-              <View style={styles.headerContent}>
-                <View style={styles.merchantInfo}>
+              <View style={styles.merchantInfo}>
+                <View>
                   <ThemedText
                     type="small"
                     themeColor="textSecondary"
                     style={styles.greeting}
                   >
-                    Good morning
+                    {getGreeting()}
                   </ThemedText>
                   <ThemedText type="title" style={styles.merchantName}>
-                    Highveld Butchery
-                  </ThemedText>
-                </View>
-                <View style={styles.headerActions}>
-                  <Pressable style={styles.iconButton}>
-                    <AppSymbol
-                      name={{ ios: "bell.fill", android: "notifications" }}
-                      size={22}
-                      tintColor={colors.text}
-                    />
-                  </Pressable>
-                  <Pressable style={styles.avatarButton}>
-                    <AppSymbol
-                      name={{ ios: "person.circle.fill", android: "person" }}
-                      size={40}
-                      tintColor={VODACOM.red}
-                    />
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.brandBar}>
-                <View
-                  style={[
-                    styles.brandPill,
-                    {
-                      backgroundColor: isDark
-                        ? colors.surfaceStrong
-                        : VODACOM.grey,
-                    },
-                  ]}
-                >
-                  <AppSymbol
-                    name={{ ios: "checkmark.seal.fill", android: "verified" }}
-                    size={14}
-                    tintColor={VODACOM.green}
-                  />
-                  <ThemedText type="smallBold" style={styles.brandText}>
-                    Verified Merchant
-                  </ThemedText>
-                </View>
-                <View
-                  style={[
-                    styles.brandPill,
-                    {
-                      backgroundColor: isDark
-                        ? colors.surfaceStrong
-                        : VODACOM.grey,
-                    },
-                  ]}
-                >
-                  <AppSymbol
-                    name={{ ios: "printer.fill", android: "print" }}
-                    size={14}
-                    tintColor={VODACOM.red}
-                  />
-                  <ThemedText type="smallBold" style={styles.brandText}>
-                    Printer Ready
+                    {getMerchantName()} - {getMerchantCode()}
                   </ThemedText>
                 </View>
               </View>
             </View>
-
-            {/* Hero Banner - Integrated with content */}
-            <View
-              style={[styles.vodacomBanner, { backgroundColor: VODACOM.red }]}
-            >
-              <AppSymbol
-                name={{ ios: "megaphone.fill", android: "announcement" }}
-                size={20}
-                tintColor={VODACOM.light}
-              />
-              <ThemedText
-                type="smallBold"
-                style={[styles.bannerText, { color: VODACOM.light }]}
-              >
-                Introducing the new M-Pesa Business App for Merchants
-              </ThemedText>
-            </View>
-
-            {/* Hero Text */}
-            <View style={styles.heroContent}>
-              <ThemedText type="title" style={styles.heroTitle}>
-                Take your business further with convenience and ease
-              </ThemedText>
-              <Pressable style={styles.seeMoreButton}>
-                <ThemedText
-                  type="smallBold"
-                  style={[styles.seeMoreText, { color: VODACOM.red }]}
-                >
-                  See more →
-                </ThemedText>
-              </Pressable>
-            </View>
-
-            {/* Stats */}
-            <View style={styles.statsGrid}>
-              {stats.map((stat) => (
-                <ThemedView
-                  key={stat.label}
-                  type="surface"
-                  style={styles.statCard}
-                >
-                  <View
-                    style={[
-                      styles.statIconContainer,
-                      { backgroundColor: `${VODACOM.red}15` },
-                    ]}
-                  >
-                    <AppSymbol
-                      name={stat.icon as any}
-                      size={20}
-                      tintColor={VODACOM.red}
-                    />
-                  </View>
-                  <ThemedText type="subtitle" style={styles.statValue}>
-                    {stat.value}
-                  </ThemedText>
-                  <ThemedText
-                    type="small"
-                    themeColor="textSecondary"
-                    style={styles.statLabel}
-                  >
-                    {stat.label}
-                  </ThemedText>
-                </ThemedView>
-              ))}
-            </View>
-
-            {/* Quick Actions */}
-            <ThemedView type="surface" style={styles.quickActions}>
-              {quickActions.map((action) => (
-                <Pressable
-                  key={action.label}
-                  style={styles.quickActionItem}
-                  onPress={() => handleQuickAction(action.route)}
-                >
-                  <View
-                    style={[
-                      styles.quickActionIcon,
-                      { backgroundColor: `${VODACOM.red}10` },
-                    ]}
-                  >
-                    <AppSymbol
-                      name={action.icon}
-                      size={24}
-                      tintColor={VODACOM.red}
-                    />
-                  </View>
-                  <ThemedText
-                    type="small"
-                    themeColor="textSecondary"
-                    style={styles.quickActionLabel}
-                  >
-                    {action.label}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </ThemedView>
 
             {/* Transaction Form */}
             <ThemedView type="surface" style={styles.transactionCard}>
@@ -506,13 +423,9 @@ export default function HomeScreen() {
                     >
                       {isProcessing || isPinLoading ? (
                         <>
-                          <AppSymbol
-                            name={{
-                              ios: "clock.badge.exclamationmark",
-                              android: "hourglass",
-                            }}
-                            size={20}
-                            tintColor={VODACOM.light}
+                          <ActivityIndicator
+                            size="small"
+                            color={VODACOM.light}
                           />
                           <ThemedText
                             type="smallBold"
@@ -553,24 +466,42 @@ export default function HomeScreen() {
               <View
                 style={[
                   styles.statusContainer,
-                  { backgroundColor: `${VODACOM.green}10` },
+                  {
+                    backgroundColor: `${statusMessage.includes("✓") ? VODACOM.green : VODACOM.gold}15`,
+                  },
                 ]}
               >
                 <AppSymbol
-                  name={{ ios: "message.fill", android: "message" }}
+                  name={{
+                    ios: statusMessage.includes("✓")
+                      ? "checkmark.circle.fill"
+                      : "clock.fill",
+                    android: statusMessage.includes("✓")
+                      ? "check_circle"
+                      : "schedule",
+                  }}
                   size={16}
-                  tintColor={VODACOM.green}
+                  tintColor={
+                    statusMessage.includes("✓") ? VODACOM.green : VODACOM.gold
+                  }
                 />
                 <ThemedText
                   type="small"
-                  style={[styles.statusText, { color: colors.text }]}
+                  style={[
+                    styles.statusText,
+                    {
+                      color: statusMessage.includes("✓")
+                        ? VODACOM.green
+                        : colors.text,
+                    },
+                  ]}
                 >
                   {statusMessage}
                 </ThemedText>
               </View>
             </ThemedView>
 
-            {/* Recent Activity */}
+            {/* Recent Transactions */}
             <ThemedView type="surface" style={styles.activityCard}>
               <View style={styles.cardHeader}>
                 <View>
@@ -598,90 +529,122 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
 
-              {recentSales.map((item, index) => (
-                <View
-                  key={`${item.customer}-${index}`}
-                  style={[
-                    styles.activityItem,
-                    index < recentSales.length - 1 && styles.activityBorder,
-                  ]}
-                >
-                  <View style={styles.activityInfo}>
-                    <View
-                      style={[
-                        styles.activityIcon,
-                        { backgroundColor: `${VODACOM.red}10` },
-                      ]}
-                    >
-                      <AppSymbol
-                        name={{ ios: "person.fill", android: "person" }}
-                        size={16}
-                        tintColor={VODACOM.red}
-                      />
-                    </View>
-                    <View>
-                      <ThemedText
-                        type="smallBold"
-                        style={[styles.customerText, { color: colors.text }]}
+              {loadingRecent ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color={VODACOM.red} />
+                </View>
+              ) : recentTransactions.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <AppSymbol
+                    name={{ ios: "doc.text", android: "description" }}
+                    size={32}
+                    tintColor={colors.textSecondary}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.emptyStateText,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    No transactions yet
+                  </ThemedText>
+                </View>
+              ) : (
+                recentTransactions.map((tx, index) => (
+                  <View
+                    key={tx.id}
+                    style={[
+                      styles.activityItem,
+                      index < recentTransactions.length - 1 &&
+                        styles.activityBorder,
+                    ]}
+                  >
+                    <View style={styles.activityInfo}>
+                      <View
+                        style={[
+                          styles.activityIcon,
+                          { backgroundColor: `${getStatusColor(tx.status)}15` },
+                        ]}
                       >
-                        {item.customer}
+                        <AppSymbol
+                          name={getStatusIcon(tx.status) as any}
+                          size={16}
+                          tintColor={getStatusColor(tx.status)}
+                        />
+                      </View>
+                      <View>
+                        <ThemedText
+                          type="smallBold"
+                          style={[styles.customerText, { color: colors.text }]}
+                        >
+                          {tx.customerPhone}
+                        </ThemedText>
+                        <ThemedText
+                          type="small"
+                          style={[
+                            styles.referenceText,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          {tx.reference}
+                        </ThemedText>
+                      </View>
+                    </View>
+                    <View style={styles.activityRight}>
+                      <ThemedText
+                        type="subtitle"
+                        style={[styles.activityAmountText, { color: colors.text }]}
+                      >
+                        {formatAmount(tx.amount)}
                       </ThemedText>
                       <View style={styles.statusBadge}>
                         <View
                           style={[
                             styles.statusDot,
-                            {
-                              backgroundColor: getStatusColor(item.status),
-                            },
+                            { backgroundColor: getStatusColor(tx.status) },
                           ]}
                         />
                         <ThemedText
                           type="small"
-                          themeColor="textSecondary"
-                          style={styles.statusLabel}
+                          style={[
+                            styles.statusLabel,
+                            { color: getStatusColor(tx.status) },
+                          ]}
                         >
-                          {item.status}
+                          {tx.status.charAt(0).toUpperCase() +
+                            tx.status.slice(1)}
                         </ThemedText>
                       </View>
                     </View>
                   </View>
-                  <ThemedText
-                    type="subtitle"
-                    style={[styles.amountText, { color: colors.text }]}
-                  >
-                    {item.amount}
-                  </ThemedText>
-                </View>
-              ))}
-              <PinPrompt
-                visible={showPinPrompt}
-                onClose={handlePinCancel}
-                onConfirm={handlePinConfirm}
-                amount={amount}
-                phoneNumber={mobile}
-                merchantName={config.merchant.name}
-                isLoading={isPinLoading}
-                error={pinError}
-              />
+                ))
+              )}
             </ThemedView>
 
-            {/* Footer */}
-            <View style={styles.vodacomFooter}>
-              <View style={styles.footerContent}>
-                <AppSymbol
-                  name={{ ios: "iphone", android: "phone_android" }}
-                  size={24}
-                  tintColor={VODACOM.red}
-                />
-                <ThemedText
-                  type="small"
-                  themeColor="textSecondary"
-                  style={styles.footerText}
-                >
-                  Scan-a QR code to download the Business App
-                </ThemedText>
-              </View>
-            </View>
+            {/* PIN Prompt */}
+            <PinPrompt
+              visible={showPinPrompt}
+              onClose={handlePinCancel}
+              onConfirm={handlePinConfirm}
+              amount={amount}
+              phoneNumber={mobile}
+              merchantName={getMerchantName()}
+              isLoading={isPinLoading}
+              error={pinError}
+            />
+          </View>
+          {/* Footer */}
+          <View style={styles.footer}>
+            <ThemedText
+              style={[styles.footerText, { color: colors.textSecondary }]}
+            >
+              M-Pesa POS v2.0.0
+            </ThemedText>
+            <ThemedText
+              style={[styles.footerSubtext, { color: colors.textSecondary }]}
+            >
+              Vodacom Lesotho
+            </ThemedText>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -711,14 +674,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
     gap: Spacing.two,
   },
-  headerContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  merchantInfo: {
-    gap: 2,
-  },
   greeting: {
     fontSize: 14,
   },
@@ -726,16 +681,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "700",
   },
-  headerActions: {
+  merchantInfo: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
   },
-  iconButton: {
-    padding: 8,
-  },
   avatarButton: {
-    padding: 4,
+    padding: 8,
   },
   brandBar: {
     flexDirection: "row",
@@ -750,88 +702,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   brandText: {
-    fontSize: 12,
-  },
-  vodacomBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  bannerText: {
-    flex: 1,
-  },
-  heroContent: {
-    gap: 8,
-  },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    lineHeight: 36,
-  },
-  seeMoreButton: {
-    alignSelf: "flex-start",
-  },
-  seeMoreText: {
-    fontSize: 14,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    gap: Spacing.two,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 16,
-    padding: Spacing.three,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: "700",
-  },
-  statLabel: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  quickActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    borderRadius: 16,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.two,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  quickActionItem: {
-    alignItems: "center",
-    gap: 4,
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quickActionLabel: {
     fontSize: 12,
   },
   transactionCard: {
@@ -901,7 +771,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   amountText: {
-    fontSize: 14,
+    fontSize: 24,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -953,6 +823,20 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 14,
   },
+  loadingContainer: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  emptyState: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 20,
+  },
+  emptyStateText: {
+    fontSize: 14,
+  },
   activityItem: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -978,10 +862,21 @@ const styles = StyleSheet.create({
   customerText: {
     fontSize: 14,
   },
+  referenceText: {
+    fontSize: 12,
+  },
+  activityRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  activityAmountText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
   statusDot: {
     width: 6,
@@ -991,17 +886,16 @@ const styles = StyleSheet.create({
   statusLabel: {
     fontSize: 12,
   },
-  vodacomFooter: {
-    marginBottom: Spacing.four,
-  },
-  footerContent: {
-    flexDirection: "row",
+  footer: {
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+    gap: 2,
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
+  },
+  footerSubtext: {
+    fontSize: 11,
   },
 });
