@@ -255,14 +255,14 @@ export default function HistoryScreen() {
     return getStatusCount(filter);
   };
 
-  // Render expanded details
+// Render expanded details
   const renderExpandedDetails = (transaction: Transaction) => {
     const isExpanded = expandedId === transaction.id;
     const animValue = animatedValues[transaction.id] || new Animated.Value(0);
 
     const height = animValue.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, 200],
+      outputRange: [0, 300],
     });
 
     const opacity = animValue.interpolate({
@@ -283,129 +283,158 @@ export default function HistoryScreen() {
           },
         ]}
       >
-        <View style={styles.expandedContent}>
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Reference
-            </ThemedText>
-            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
-              {transaction.reference}
-            </ThemedText>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Customer
-            </ThemedText>
-            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
-              {transaction.customerPhone}
-            </ThemedText>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Amount
-            </ThemedText>
-            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
-              {formatAmount(transaction.amount)}
-            </ThemedText>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Status
-            </ThemedText>
-            <View style={styles.expandedStatusBadge}>
-              <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: getStatusColor(transaction.status) },
-                ]}
-              />
-              <ThemedText
-                style={[
-                  styles.expandedValue,
-                  { color: getStatusColor(transaction.status) },
-                ]}
-              >
-                {formatStatus(transaction.status)}
-              </ThemedText>
-            </View>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Response
-            </ThemedText>
-            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
-              {transaction.responseMessage || "N/A"}
-            </ThemedText>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Response Code
-            </ThemedText>
-            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
-              {transaction.responseCode || "N/A"}
-            </ThemedText>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Device
-            </ThemedText>
-            <ThemedText
-              style={[styles.expandedValue, { color: colors.text }]}
-              numberOfLines={1}
-            >
-              {transaction.device?.deviceName || "N/A"} • Terminal{" "}
-              {transaction.device?.terminalId || "N/A"}
-            </ThemedText>
-          </View>
-
-          <View style={styles.expandedRow}>
-            <ThemedText
-              style={[styles.expandedLabel, { color: colors.textSecondary }]}
-            >
-              Processed At
-            </ThemedText>
-            <ThemedText style={[styles.expandedValue, { color: colors.text }]}>
-              {transaction.processedAt
-                ? formatDate(transaction.processedAt)
-                : "N/A"}
-            </ThemedText>
-          </View>
-
-          {transaction.ipAddress && (
+        <ScrollView
+          style={styles.expandedScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.expandedContent}>
             <View style={styles.expandedRow}>
               <ThemedText
                 style={[styles.expandedLabel, { color: colors.textSecondary }]}
               >
-                IP Address
+                Reference
               </ThemedText>
               <ThemedText
                 style={[styles.expandedValue, { color: colors.text }]}
+                numberOfLines={1}
               >
-                {transaction.ipAddress}
+                {transaction.reference}
               </ThemedText>
             </View>
-          )}
-        </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Customer
+              </ThemedText>
+              <ThemedText
+                style={[styles.expandedValue, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {transaction.customerPhone}
+              </ThemedText>
+            </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Amount
+              </ThemedText>
+              <ThemedText
+                style={[styles.expandedValue, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {formatAmount(transaction.amount)}
+              </ThemedText>
+            </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Status
+              </ThemedText>
+              <View style={styles.expandedStatusBadge}>
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: getStatusColor(transaction.status) },
+                  ]}
+                />
+                <ThemedText
+                  style={[
+                    styles.expandedValue,
+                    { color: getStatusColor(transaction.status) },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {formatStatus(transaction.status)}
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Response
+              </ThemedText>
+              <ThemedText
+                style={[styles.expandedValue, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {transaction.responseMessage || "N/A"}
+              </ThemedText>
+            </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Response Code
+              </ThemedText>
+              <ThemedText
+                style={[styles.expandedValue, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {transaction.responseCode || "N/A"}
+              </ThemedText>
+            </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Device
+              </ThemedText>
+              <ThemedText
+                style={[
+                  styles.expandedValue,
+                  { color: colors.text },
+                ]}
+                numberOfLines={1}
+              >
+                {transaction.device?.deviceName || "N/A"} • Terminal{" "}
+                {transaction.device?.terminalId || "N/A"}
+              </ThemedText>
+            </View>
+
+            <View style={styles.expandedRow}>
+              <ThemedText
+                style={[styles.expandedLabel, { color: colors.textSecondary }]}
+              >
+                Processed At
+              </ThemedText>
+              <ThemedText
+                style={[styles.expandedValue, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {transaction.processedAt
+                  ? formatDate(transaction.processedAt)
+                  : "N/A"}
+              </ThemedText>
+            </View>
+
+            {transaction.ipAddress && (
+              <View style={styles.expandedRow}>
+                <ThemedText
+                  style={[styles.expandedLabel, { color: colors.textSecondary }]}
+                >
+                  IP Address
+                </ThemedText>
+                <ThemedText
+                  style={[styles.expandedValue, { color: colors.text }]}
+                  numberOfLines={1}
+                >
+                  {transaction.ipAddress}
+                </ThemedText>
+              </View>
+            )}
+          </View>
+        </ScrollView>
       </Animated.View>
     );
   };
@@ -515,6 +544,7 @@ export default function HistoryScreen() {
                               : colors.textSecondary,
                         },
                       ]}
+                      numberOfLines={1}
                     >
                       {filter}
                       {count > 0 && (
@@ -528,6 +558,7 @@ export default function HistoryScreen() {
                                   : colors.textSecondary,
                             },
                           ]}
+                          numberOfLines={1}
                         >
                           {` (${count})`}
                         </ThemedText>
@@ -855,20 +886,22 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   filterScroll: {
-    marginHorizontal: -Spacing.four,
     paddingHorizontal: Spacing.four,
   },
   filterContainer: {
     flexDirection: "row",
     gap: 8,
     paddingVertical: 4,
+    paddingRight: Spacing.four,
   },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    minWidth: 90,
+    alignItems: "center",
   },
   filterChipActive: {
     backgroundColor: VODACOM.red,
@@ -1001,6 +1034,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: 12,
     marginBottom: 8,
+  },
+  expandedScroll: {
+    flex: 1,
   },
   expandedContent: {
     padding: Spacing.three,
