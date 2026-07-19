@@ -1,7 +1,15 @@
+// app/(auth)/verify-device.tsx
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  View,
+  ScrollView,
+  Dimensions,
+} from "react-native";
 
 import { authApi } from "@/api/auth";
 import { AppSymbol } from "@/components/app-symbol";
@@ -10,6 +18,9 @@ import { ThemedView } from "@/components/themed-view";
 import { Spacing, VODACOM } from "@/constants/theme";
 import { useTheme } from "@/context/theme-context";
 import { deviceInfoService } from "@/services/device-info.service";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const isSmallScreen = SCREEN_HEIGHT < 700;
 
 export default function VerifyDeviceScreen() {
   const router = useRouter();
@@ -27,7 +38,6 @@ export default function VerifyDeviceScreen() {
       setIsLoading(true);
       setError(null);
 
-      // Get real device information
       const deviceInfo = await deviceInfoService.getDeviceInfo();
       console.log("Real Device Info:", {
         deviceId: deviceInfo.deviceId,
@@ -39,10 +49,8 @@ export default function VerifyDeviceScreen() {
         deviceName: deviceInfo.deviceName,
       });
 
-      // Store device details for display
       setDeviceDetails(deviceInfo);
 
-      // Prepare verification payload
       const verificationData = {
         deviceId: deviceInfo.deviceId,
         osVersion: deviceInfo.osVersion,
@@ -51,14 +59,12 @@ export default function VerifyDeviceScreen() {
       };
       setVerificationData(verificationData);
 
-      // Send verification request
       const response = await authApi.verifyDevice(verificationData);
 
       if (!response.verified) {
         throw new Error(response.message || "Device verification failed");
       }
 
-      // Build device config from flat response
       const deviceConfig = {
         deviceUuid: response.deviceUuid,
         merchantId: response.merchantId,
@@ -70,16 +76,11 @@ export default function VerifyDeviceScreen() {
       setDeviceInfo(deviceConfig);
       setDeviceVerified(true);
 
-      // Store device config locally
       await SecureStore.setItemAsync(
         "deviceConfig",
         JSON.stringify(deviceConfig),
       );
 
-      // Note: Merchant info will be fetched after login via verifyOtp
-      // Do not fetch merchant info here as we don't have a valid token yet
-
-      // Navigate to login after short delay
       setTimeout(() => {
         router.replace("/(auth)/login");
       }, 1500);
@@ -93,329 +94,291 @@ export default function VerifyDeviceScreen() {
     }
   };
 
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     verifyDevice();
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const handleRetry = () => {
     verifyDevice();
   };
 
+  // Device Info Card Component
+  const DeviceInfoCard = ({ title, data, compact = false }: any) => (
+    <View
+      style={[
+        styles.deviceInfo,
+        {
+          backgroundColor: colors.surface,
+          padding: compact ? Spacing.two : Spacing.three,
+          marginTop: compact ? 8 : 12,
+        },
+      ]}
+    >
+      <ThemedText
+        style={[
+          styles.deviceInfoTitle,
+          { color: colors.text, fontSize: compact ? 13 : 15 },
+        ]}
+      >
+        {title}
+      </ThemedText>
+      {Object.entries(data).map(([key, value]) => (
+        <View key={key} style={styles.deviceInfoRow}>
+          <ThemedText
+            style={[
+              styles.deviceInfoLabel,
+              { color: colors.textSecondary, fontSize: compact ? 11 : 12 },
+            ]}
+          >
+            {key}:
+          </ThemedText>
+          <ThemedText
+            style={[
+              styles.deviceInfoValue,
+              { color: colors.text, fontSize: compact ? 11 : 12 },
+            ]}
+            numberOfLines={1}
+          >
+            {String(value) || "N/A"}
+          </ThemedText>
+        </View>
+      ))}
+    </View>
+  );
+
   return (
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
-      <View style={styles.content}>
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={[styles.logoIcon, { backgroundColor: VODACOM.red }]}>
-            <AppSymbol
-              name="creditcard.fill"
-              size={40}
-              tintColor={VODACOM.light}
-            />
-          </View>
-          <ThemedText type="title" style={styles.logoText}>
-            M-Pesa POS
-          </ThemedText>
-          <ThemedText
-            style={[styles.logoSubtext, { color: colors.textSecondary }]}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          {/* Logo - Compact on small screens */}
+          <View
+            style={[
+              styles.logoContainer,
+              isSmallScreen && styles.logoContainerSmall,
+            ]}
           >
-            Vodacom Lesotho
-          </ThemedText>
-        </View>
+            <View
+              style={[
+                styles.logoIcon,
+                { backgroundColor: VODACOM.red },
+                isSmallScreen && styles.logoIconSmall,
+              ]}
+            >
+              <AppSymbol
+                name="creditcard.fill"
+                size={isSmallScreen ? 28 : 40}
+                tintColor={VODACOM.light}
+              />
+            </View>
+            <ThemedText
+              type="title"
+              style={[styles.logoText, isSmallScreen && styles.logoTextSmall]}
+            >
+              M-Pesa POS
+            </ThemedText>
+            <ThemedText
+              style={[
+                styles.logoSubtext,
+                { color: colors.textSecondary },
+                isSmallScreen && styles.logoSubtextSmall,
+              ]}
+            >
+              Vodacom Lesotho
+            </ThemedText>
+          </View>
 
-        {/* Status */}
-        <View style={styles.statusContainer}>
-          {isLoading ? (
-            <>
-              <ActivityIndicator size="large" color={VODACOM.red} />
-              <ThemedText type="subtitle" style={styles.statusTitle}>
-                Verifying Device...
-              </ThemedText>
-              <ThemedText
-                style={[styles.statusSubtitle, { color: colors.textSecondary }]}
-              >
-                Please wait while we verify your device
-              </ThemedText>
-              {/* Show device info being collected */}
-              {deviceDetails && (
-                <View
-                  style={[
-                    styles.deviceInfo,
-                    { backgroundColor: colors.surface },
-                  ]}
-                >
-                  <ThemedText
-                    style={[styles.deviceInfoTitle, { color: colors.text }]}
-                  >
-                    Device Information
-                  </ThemedText>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Device ID:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                    >
-                      {deviceDetails.deviceId}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Model:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                    >
-                      {deviceDetails.deviceModel}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      OS:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                    >
-                      {deviceDetails.osVersion}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Serial Number:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                    >
-                      {deviceDetails.deviceId}
-                    </ThemedText>
-                  </View>
-                </View>
-              )}
-            </>
-          ) : error ? (
-            <>
-              <View
-                style={[
-                  styles.errorIcon,
-                  { backgroundColor: `${VODACOM.red}15` },
-                ]}
-              >
-                <AppSymbol
-                  name="exclamationmark.circle.fill"
-                  size={48}
-                  tintColor={VODACOM.red}
+          {/* Status */}
+          <View style={styles.statusContainer}>
+            {isLoading ? (
+              <>
+                <ActivityIndicator
+                  size={isSmallScreen ? "small" : "large"}
+                  color={VODACOM.red}
                 />
-              </View>
-              <ThemedText
-                type="subtitle"
-                style={[styles.statusTitle, { color: VODACOM.red }]}
-              >
-                Verification Failed
-              </ThemedText>
-              <ThemedText
-                style={[styles.errorMessage, { color: colors.textSecondary }]}
-              >
-                {error}
-              </ThemedText>
-
-              {/* Show device details that were sent */}
-              {deviceDetails && verificationData && (
-                <View
+                <ThemedText
+                  type="subtitle"
                   style={[
-                    styles.deviceInfo,
-                    { backgroundColor: colors.surface, marginTop: 8 },
+                    styles.statusTitle,
+                    isSmallScreen && styles.statusTitleSmall,
                   ]}
                 >
-                  <ThemedText
-                    style={[styles.deviceInfoTitle, { color: colors.text }]}
-                  >
-                    Device Details Sent
-                  </ThemedText>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Device ID:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                      numberOfLines={1}
-                    >
-                      {verificationData.deviceId || "N/A"}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      OS Version:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                    >
-                      {verificationData.osVersion || "N/A"}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Device Model:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                    >
-                      {verificationData.deviceModel || "N/A"}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.deviceInfoRow}>
-                    <ThemedText
-                      style={[
-                        styles.deviceInfoLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Serial Number:
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.deviceInfoValue, { color: colors.text }]}
-                      numberOfLines={1}
-                    >
-                      {verificationData.serialNumber || "N/A"}
-                    </ThemedText>
-                  </View>
+                  Verifying Device...
+                </ThemedText>
+                <ThemedText
+                  style={[
+                    styles.statusSubtitle,
+                    { color: colors.textSecondary },
+                    isSmallScreen && styles.statusSubtitleSmall,
+                  ]}
+                >
+                  Please wait...
+                </ThemedText>
+                {deviceDetails && (
+                  <DeviceInfoCard
+                    title="Device Information"
+                    data={{
+                      "Device ID": deviceDetails.deviceId,
+                      Model: deviceDetails.deviceModel,
+                      OS: deviceDetails.osVersion,
+                      Serial: verificationData.serialNumber,
+                    }}
+                    compact={isSmallScreen}
+                  />
+                )}
+              </>
+            ) : error ? (
+              <>
+                <View
+                  style={[
+                    styles.errorIcon,
+                    { backgroundColor: `${VODACOM.red}15` },
+                    isSmallScreen && styles.errorIconSmall,
+                  ]}
+                >
+                  <AppSymbol
+                    name="exclamationmark.circle.fill"
+                    size={isSmallScreen ? 36 : 48}
+                    tintColor={VODACOM.red}
+                  />
+                </View>
+                <ThemedText
+                  type="subtitle"
+                  style={[
+                    styles.statusTitle,
+                    { color: VODACOM.red },
+                    isSmallScreen && styles.statusTitleSmall,
+                  ]}
+                >
+                  Verification Failed
+                </ThemedText>
+                <ThemedText
+                  style={[
+                    styles.errorMessage,
+                    { color: colors.textSecondary },
+                    isSmallScreen && styles.errorMessageSmall,
+                  ]}
+                >
+                  {error}
+                </ThemedText>
 
-                  {/* Show what the backend might be expecting */}
-                  <View style={styles.divider} />
+                {deviceDetails && verificationData && (
+                  <DeviceInfoCard
+                    title="Device Details Sent"
+                    data={{
+                      "Device ID": verificationData.deviceId,
+                      "OS Version": verificationData.osVersion,
+                      Model: verificationData.deviceModel,
+                      Serial: verificationData.serialNumber,
+                    }}
+                    compact={isSmallScreen}
+                  />
+                )}
+
+                <Pressable
+                  style={[
+                    styles.retryButton,
+                    { backgroundColor: VODACOM.red },
+                    isSmallScreen && styles.retryButtonSmall,
+                  ]}
+                  onPress={handleRetry}
+                >
                   <ThemedText
                     style={[
-                      styles.deviceInfoLabel,
+                      styles.retryButtonText,
+                      isSmallScreen && styles.retryButtonTextSmall,
+                    ]}
+                  >
+                    Retry
+                  </ThemedText>
+                </Pressable>
+              </>
+            ) : deviceVerified ? (
+              <>
+                <View
+                  style={[
+                    styles.successIcon,
+                    { backgroundColor: `${VODACOM.green}15` },
+                    isSmallScreen && styles.successIconSmall,
+                  ]}
+                >
+                  <AppSymbol
+                    name="checkmark.seal.fill"
+                    size={isSmallScreen ? 36 : 48}
+                    tintColor={VODACOM.green}
+                  />
+                </View>
+                <ThemedText
+                  type="subtitle"
+                  style={[
+                    styles.statusTitle,
+                    { color: VODACOM.green },
+                    isSmallScreen && styles.statusTitleSmall,
+                  ]}
+                >
+                  Device Verified!
+                </ThemedText>
+                <ThemedText
+                  style={[
+                    styles.statusSubtitle,
+                    { color: colors.textSecondary },
+                    isSmallScreen && styles.statusSubtitleSmall,
+                  ]}
+                >
+                  Redirecting to login...
+                </ThemedText>
+                {deviceInfo && (
+                  <View
+                    style={[
+                      styles.deviceInfo,
                       {
-                        color: colors.textSecondary,
-                        fontSize: 11,
-                        textAlign: "center",
+                        backgroundColor: colors.surface,
+                        padding: Spacing.two,
+                        marginTop: 8,
                       },
                     ]}
                   >
-                    Check if these values match what&apos;s registered in the
-                    backend. Device ID should match the one stored for this
-                    merchant.
-                  </ThemedText>
-                </View>
-              )}
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoTitle,
+                        { color: colors.text, fontSize: 13 },
+                      ]}
+                    >
+                      {deviceInfo.deviceName}
+                    </ThemedText>
+                    <ThemedText
+                      style={[
+                        styles.deviceInfoDetail,
+                        { color: colors.textSecondary, fontSize: 12 },
+                      ]}
+                    >
+                      Terminal: {deviceInfo.terminalId}
+                    </ThemedText>
+                  </View>
+                )}
+              </>
+            ) : null}
+          </View>
 
-              <Pressable
-                style={[styles.retryButton, { backgroundColor: VODACOM.red }]}
-                onPress={handleRetry}
-              >
-                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
-              </Pressable>
-            </>
-          ) : deviceVerified ? (
-            <>
-              <View
-                style={[
-                  styles.successIcon,
-                  { backgroundColor: `${VODACOM.green}15` },
-                ]}
-              >
-                <AppSymbol
-                  name="checkmark.seal.fill"
-                  size={48}
-                  tintColor={VODACOM.green}
-                />
-              </View>
-              <ThemedText
-                type="subtitle"
-                style={[styles.statusTitle, { color: VODACOM.green }]}
-              >
-                Device Verified!
-              </ThemedText>
-              <ThemedText
-                style={[styles.statusSubtitle, { color: colors.textSecondary }]}
-              >
-                Redirecting to login...
-              </ThemedText>
-              {/* Device Info */}
-              {deviceInfo && (
-                <View
-                  style={[
-                    styles.deviceInfo,
-                    { backgroundColor: colors.surface },
-                  ]}
-                >
-                  <ThemedText
-                    style={[styles.deviceInfoTitle, { color: colors.text }]}
-                  >
-                    {deviceInfo.deviceName}
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.deviceInfoDetail,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    Terminal: {deviceInfo.terminalId}
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.deviceInfoDetail,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    Merchant:{" "}
-                    {merchantInfo?.businessName ||
-                      merchantInfo?.name ||
-                      "Loading..."}
-                  </ThemedText>
-                </View>
-              )}
-            </>
-          ) : null}
+          {/* Footer */}
+          <View style={[styles.footer, isSmallScreen && styles.footerSmall]}>
+            <ThemedText
+              style={[
+                styles.footerText,
+                { color: colors.textSecondary },
+                isSmallScreen && styles.footerTextSmall,
+              ]}
+            >
+              Need help? Contact support
+            </ThemedText>
+          </View>
         </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <ThemedText
-            style={[styles.footerText, { color: colors.textSecondary }]}
-          >
-            Need help? Contact support
-          </ThemedText>
-        </View>
-      </View>
+      </ScrollView>
     </ThemedView>
   );
 }
@@ -424,16 +387,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
     justifyContent: "space-between",
     padding: Spacing.four,
-    paddingTop: Spacing.six,
-    paddingBottom: Spacing.four,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.two,
   },
   logoContainer: {
     alignItems: "center",
-    gap: 8,
+    gap: 6,
+    paddingTop: Spacing.two,
+  },
+  logoContainerSmall: {
+    gap: 4,
+    paddingTop: Spacing.one,
   },
   logoIcon: {
     width: 80,
@@ -441,31 +412,50 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  logoIconSmall: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginBottom: 2,
   },
   logoText: {
     fontSize: 28,
     fontWeight: "700",
   },
+  logoTextSmall: {
+    fontSize: 22,
+  },
   logoSubtext: {
     fontSize: 14,
+  },
+  logoSubtextSmall: {
+    fontSize: 12,
   },
   statusContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
-    paddingHorizontal: Spacing.four,
+    gap: 12,
+    paddingHorizontal: Spacing.two,
   },
   statusTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "600",
     textAlign: "center",
   },
+  statusTitleSmall: {
+    fontSize: 18,
+  },
   statusSubtitle: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
-    maxWidth: 320,
+    maxWidth: 300,
+  },
+  statusSubtitleSmall: {
+    fontSize: 13,
+    maxWidth: 260,
   },
   errorIcon: {
     width: 80,
@@ -474,6 +464,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  errorIconSmall: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
   successIcon: {
     width: 80,
     height: 80,
@@ -481,34 +476,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  successIconSmall: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
   errorMessage: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
-    maxWidth: 320,
+    maxWidth: 300,
+  },
+  errorMessageSmall: {
+    fontSize: 13,
+    maxWidth: 260,
   },
   retryButton: {
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 12,
-    marginTop: 8,
+    marginTop: 4,
+  },
+  retryButtonSmall: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
   retryButtonText: {
     color: VODACOM.light,
     fontSize: 16,
     fontWeight: "600",
   },
+  retryButtonTextSmall: {
+    fontSize: 14,
+  },
   deviceInfo: {
     width: "100%",
-    padding: Spacing.three,
-    borderRadius: 16,
-    gap: 8,
-    marginTop: 16,
+    borderRadius: 12,
+    gap: 4,
   },
   deviceInfoTitle: {
-    fontSize: 16,
     fontWeight: "600",
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   deviceInfoRow: {
     flexDirection: "row",
@@ -516,27 +525,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   deviceInfoLabel: {
-    fontSize: 13,
+    fontWeight: "500",
   },
   deviceInfoValue: {
-    fontSize: 13,
     fontWeight: "500",
-    maxWidth: "60%",
+    maxWidth: "55%",
   },
   deviceInfoDetail: {
-    fontSize: 14,
     textAlign: "center",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#E2E8F0",
-    marginVertical: 8,
   },
   footer: {
     alignItems: "center",
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  footerSmall: {
+    paddingVertical: Spacing.one,
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
+  },
+  footerTextSmall: {
+    fontSize: 11,
   },
 });
