@@ -1,15 +1,17 @@
 import { useState } from "react";
 import {
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 
+import { AppLogo } from "@/components/app-logo";
 import { AppSymbol } from "@/components/app-symbol";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -53,146 +55,155 @@ export default function LoginScreen() {
 
   return (
     <ThemedView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent]}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardView}
       >
-        <View style={styles.headerSection}>
-          <View style={[styles.logoCircle, { backgroundColor: colors.surface }]}>
-            <Image
-              source={require("@/assets/images/logo.png")}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
-          </View>
-          <ThemedText type="title" style={styles.title}>
-            Welcome Back
-          </ThemedText>
-          <ThemedText
-            type="small"
-            style={[styles.subtitle, { color: colors.textSecondary }]}
-          >
-            Sign in to your M-Pesa POS
-          </ThemedText>
-        </View>
-
-        <View
-          style={[
-            styles.formCard,
-            { backgroundColor: colors.surface },
-          ]}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.fieldGroup}>
-            <ThemedText type="smallBold" style={styles.label}>
-              Username
-            </ThemedText>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? colors.surfaceStrong : VODACOM.light,
-                  color: colors.text,
-                },
-              ]}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="username"
-              placeholderTextColor={colors.textSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isDisabled}
-            />
-          </View>
+          <View style={styles.content}>
+            {/* Logo */}
+            <AppLogo size="medium" />
 
-          <View style={styles.fieldGroup}>
-            <ThemedText type="smallBold" style={styles.label}>
-              Password
-            </ThemedText>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.passwordInput,
-                  {
-                    backgroundColor: isDark ? colors.surfaceStrong : VODACOM.light,
-                    color: colors.text,
-                  },
-                ]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter your password"
-                placeholderTextColor={colors.textSecondary}
-                secureTextEntry={!showPassword}
-                editable={!isDisabled}
-              />
-              <Pressable
-                onPress={() => setShowPassword((prev) => !prev)}
-                style={styles.eyeButton}
+            <View style={styles.headerText}>
+              <ThemedText type="title" style={styles.title}>
+                Welcome Back
+              </ThemedText>
+              <ThemedText
+                type="small"
+                style={[styles.subtitle, { color: colors.textSecondary }]}
               >
-                <AppSymbol
-                  name={showPassword ? "eye.slash" : "eye"}
-                  size={20}
-                  tintColor={colors.textSecondary}
+                Sign in to your M-Pesa POS
+              </ThemedText>
+            </View>
+
+            {/* Form */}
+            <View
+              style={[styles.formCard, { backgroundColor: colors.surface }]}
+            >
+              <View style={styles.fieldGroup}>
+                <ThemedText type="smallBold" style={styles.label}>
+                  Username
+                </ThemedText>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark
+                        ? colors.surfaceStrong
+                        : VODACOM.grey,
+                      color: colors.text,
+                    },
+                  ]}
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder="username"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isDisabled}
                 />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <ThemedText type="smallBold" style={styles.label}>
+                  Password
+                </ThemedText>
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.passwordInput,
+                      {
+                        backgroundColor: isDark
+                          ? colors.surfaceStrong
+                          : VODACOM.grey,
+                        color: colors.text,
+                      },
+                    ]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Enter your password"
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry={!showPassword}
+                    editable={!isDisabled}
+                  />
+                  <Pressable
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    style={styles.eyeButton}
+                    hitSlop={8}
+                  >
+                    <AppSymbol
+                      name={showPassword ? "eye.slash" : "eye"}
+                      size={20}
+                      tintColor={colors.textSecondary}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+
+              <Pressable
+                onPress={handleLogin}
+                disabled={isDisabled}
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  pressed && styles.pressed,
+                  isDisabled && styles.disabled,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.loginButtonInner,
+                    {
+                      backgroundColor: isDisabled
+                        ? colors.textSecondary
+                        : VODACOM.red,
+                    },
+                  ]}
+                >
+                  {isSubmitting || isLoading ? (
+                    <ThemedText
+                      type="smallBold"
+                      style={[styles.loginButtonText, { color: VODACOM.light }]}
+                    >
+                      Signing in...
+                    </ThemedText>
+                  ) : (
+                    <>
+                      <ThemedText
+                        type="smallBold"
+                        style={[
+                          styles.loginButtonText,
+                          { color: VODACOM.light },
+                        ]}
+                      >
+                        Sign In
+                      </ThemedText>
+                      <AppSymbol
+                        name={{ ios: "arrow.right", android: "arrow_forward" }}
+                        size={18}
+                        tintColor={VODACOM.light}
+                      />
+                    </>
+                  )}
+                </View>
+              </Pressable>
+
+              <Pressable onPress={handleForgotPassword} disabled={isDisabled}>
+                <ThemedText
+                  type="small"
+                  style={[styles.forgotText, { color: VODACOM.red }]}
+                >
+                  Forgot Password?
+                </ThemedText>
               </Pressable>
             </View>
           </View>
-
-          <Pressable
-            onPress={handleLogin}
-            disabled={isDisabled}
-            style={({ pressed }) => [
-              styles.loginButton,
-              pressed && styles.pressed,
-              isDisabled && styles.disabled,
-            ]}
-          >
-            <View
-              style={[
-                styles.loginButtonInner,
-                {
-                  backgroundColor:
-                    isSubmitting || isLoading ? colors.textSecondary : VODACOM.red,
-                },
-              ]}
-            >
-              {isSubmitting || isLoading ? (
-                <ThemedText
-                  type="smallBold"
-                  style={[styles.loginButtonText, { color: VODACOM.light }]}
-                >
-                  Signing in...
-                </ThemedText>
-              ) : (
-                <>
-                  <ThemedText
-                    type="smallBold"
-                    style={[styles.loginButtonText, { color: VODACOM.light }]}
-                  >
-                    Sign In
-                  </ThemedText>
-                  <AppSymbol
-                    name={{ ios: "arrow.right", android: "arrow_forward" }}
-                    size={18}
-                    tintColor={VODACOM.light}
-                  />
-                </>
-              )}
-            </View>
-          </Pressable>
-
-          <View style={styles.forgotRow}>
-            <Pressable onPress={handleForgotPassword} disabled={isDisabled}>
-              <ThemedText
-                type="small"
-                style={[styles.forgotText, { color: VODACOM.red }]}
-              >
-                Forgot Password?
-              </ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
@@ -201,49 +212,37 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
+  keyboardView: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
+  },
+  content: {
     paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
+    paddingVertical: Spacing.four,
+    gap: Spacing.three,
   },
-  headerSection: {
+  headerText: {
     alignItems: "center",
-    marginBottom: Spacing.five,
-    gap: Spacing.two,
-  },
-  logoCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.two,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  logoImage: {
-    width: 64,
-    height: 64,
+    gap: Spacing.one,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "700",
     textAlign: "center",
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
   },
   formCard: {
-    borderRadius: 24,
+    borderRadius: 20,
     padding: Spacing.four,
     gap: Spacing.three,
     shadowColor: "#000",
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
@@ -253,15 +252,13 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    marginBottom: 2,
   },
   input: {
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    borderWidth: 1,
-    borderColor: "transparent",
+    borderWidth: 0,
   },
   passwordRow: {
     flexDirection: "row",
@@ -299,20 +296,9 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.6,
   },
-  forgotRow: {
-    alignItems: "flex-end",
-    marginTop: -Spacing.one,
-  },
   forgotText: {
     fontSize: 14,
     fontWeight: "600",
-  },
-  footer: {
-    alignItems: "center",
-    marginTop: Spacing.four,
-  },
-  footerText: {
-    fontSize: 12,
     textAlign: "center",
   },
 });

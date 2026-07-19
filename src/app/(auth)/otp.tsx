@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
 import {
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
+import { AppLogo } from "@/components/app-logo";
 import { AppSymbol } from "@/components/app-symbol";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -19,7 +21,7 @@ import { useAuth } from "@/context/auth-context";
 import { MerchantSelector } from "@/components/merchant-selector";
 
 export default function OtpScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const {
     verifyOtp,
     resetPassword,
@@ -96,149 +98,164 @@ export default function OtpScreen() {
 
   return (
     <ThemedView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent]}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardView}
       >
-        <View style={styles.headerSection}>
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <AppSymbol
-              name={{ ios: "chevron.left", android: "arrow_back" }}
-              size={24}
-              tintColor={VODACOM.red}
-            />
-          </Pressable>
-          <View style={[styles.logoCircle, { backgroundColor: colors.surface }]}>
-            <Image
-              source={require("@/assets/images/logo.png")}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
-          </View>
-          <ThemedText type="title" style={styles.title}>
-            {isReset ? "Reset Password" : "Verify Login"}
-          </ThemedText>
-          <ThemedText
-            type="small"
-            style={[styles.subtitle, { color: colors.textSecondary }]}
-          >
-            {isReset
-              ? "Enter the code we sent and choose a new password"
-              : `Enter the 6-digit code sent to ${pendingEmail ?? "your email"}`}
-          </ThemedText>
-        </View>
-
-        <View
-          style={[
-            styles.formCard,
-            { backgroundColor: colors.surface },
-          ]}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.fieldGroup}>
-            <ThemedText type="smallBold" style={styles.label}>
-              Verification Code
-            </ThemedText>
-            <TextInput
-              style={[
-                styles.input,
-                styles.otpInput,
-                {
-                  backgroundColor: colors.surfaceStrong,
-                  color: colors.text,
-                },
-              ]}
-              value={otp}
-              onChangeText={setOtp}
-              placeholder="000000"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="number-pad"
-              maxLength={6}
-              editable={!isSubmitting}
-            />
-          </View>
+          <View style={styles.content}>
+            {/* Back Button */}
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <AppSymbol
+                name={{ ios: "chevron.left", android: "arrow_back" }}
+                size={24}
+                tintColor={VODACOM.red}
+              />
+            </Pressable>
 
-          {isReset && (
-            <>
+            {/* Logo */}
+            <AppLogo size="medium" />
+
+            <View style={styles.headerText}>
+              <ThemedText type="title" style={styles.title}>
+                {isReset ? "Reset Password" : "Verify Code"}
+              </ThemedText>
+              <ThemedText
+                type="small"
+                style={[styles.subtitle, { color: colors.textSecondary }]}
+              >
+                {isReset
+                  ? "Enter the code sent to your email"
+                  : `We sent a 6-digit code to ${pendingEmail ?? "your email"}`}
+              </ThemedText>
+            </View>
+
+            {/* Form */}
+            <View
+              style={[styles.formCard, { backgroundColor: colors.surface }]}
+            >
               <View style={styles.fieldGroup}>
                 <ThemedText type="smallBold" style={styles.label}>
-                  New Password
+                  Verification Code
                 </ThemedText>
                 <TextInput
                   style={[
                     styles.input,
+                    styles.otpInput,
                     {
-                      backgroundColor: colors.surfaceStrong,
+                      backgroundColor: isDark
+                        ? colors.surfaceStrong
+                        : VODACOM.grey,
                       color: colors.text,
                     },
                   ]}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  placeholder="Min 6 characters"
+                  value={otp}
+                  onChangeText={setOtp}
+                  placeholder="000000"
                   placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
+                  keyboardType="number-pad"
+                  maxLength={6}
                   editable={!isSubmitting}
                 />
               </View>
 
-              <View style={styles.fieldGroup}>
-                <ThemedText type="smallBold" style={styles.label}>
-                  Confirm Password
-                </ThemedText>
-                <TextInput
-style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.surfaceStrong,
-                      color: colors.text,
-                    },
-                  ]}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Re-enter password"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                  editable={!isSubmitting}
-                />
-              </View>
-            </>
-          )}
+              {isReset && (
+                <>
+                  <View style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.label}>
+                      New Password
+                    </ThemedText>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: isDark
+                            ? colors.surfaceStrong
+                            : VODACOM.grey,
+                          color: colors.text,
+                        },
+                      ]}
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      placeholder="Min 6 characters"
+                      placeholderTextColor={colors.textSecondary}
+                      secureTextEntry
+                      editable={!isSubmitting}
+                    />
+                  </View>
 
-          <Pressable
-            onPress={isReset ? handleResetPassword : handleVerifyLogin}
-            disabled={isSubmitting}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.pressed,
-              isSubmitting && styles.disabled,
-            ]}
-          >
-            <View
-              style={[
-                styles.primaryButtonInner,
-                {
-                  backgroundColor: isSubmitting
-                    ? colors.textSecondary
-                    : VODACOM.green,
-                },
-              ]}
-            >
-              <ThemedText
-                type="smallBold"
-                style={[styles.primaryButtonText, { color: VODACOM.light }]}
+                  <View style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.label}>
+                      Confirm Password
+                    </ThemedText>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: isDark
+                            ? colors.surfaceStrong
+                            : VODACOM.grey,
+                          color: colors.text,
+                        },
+                      ]}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder="Re-enter password"
+                      placeholderTextColor={colors.textSecondary}
+                      secureTextEntry
+                      editable={!isSubmitting}
+                    />
+                  </View>
+                </>
+              )}
+
+              <Pressable
+                onPress={isReset ? handleResetPassword : handleVerifyLogin}
+                disabled={isSubmitting}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  pressed && styles.pressed,
+                  isSubmitting && styles.disabled,
+                ]}
               >
-                {isSubmitting
-                  ? "Please wait..."
-                  : isReset
-                    ? "Reset Password"
-                    : "Verify Code"}
-              </ThemedText>
+                <View
+                  style={[
+                    styles.primaryButtonInner,
+                    {
+                      backgroundColor: isSubmitting
+                        ? colors.textSecondary
+                        : isReset
+                          ? VODACOM.gold
+                          : VODACOM.green,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    type="smallBold"
+                    style={[
+                      styles.primaryButtonText,
+                      {
+                        color: isReset ? VODACOM.dark : VODACOM.light,
+                      },
+                    ]}
+                  >
+                    {isSubmitting
+                      ? "Please wait..."
+                      : isReset
+                        ? "Reset Password"
+                        : "Verify Code"}
+                  </ThemedText>
+                </View>
+              </Pressable>
             </View>
-          </Pressable>
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
       <MerchantSelector
         visible={showMerchantSelection}
         merchants={userMerchants}
@@ -255,54 +272,42 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
+  keyboardView: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
   },
-  headerSection: {
-    marginBottom: Spacing.five,
-    gap: Spacing.two,
+  content: {
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.four,
+    gap: Spacing.three,
   },
   backButton: {
     alignSelf: "flex-start",
     padding: 8,
-    marginBottom: Spacing.two,
+    marginBottom: -Spacing.one,
   },
-  logoCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 24,
+  headerText: {
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.two,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  logoImage: {
-    width: 64,
-    height: 64,
+    gap: Spacing.one,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     textAlign: "center",
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
     textAlign: "center",
-    lineHeight: 22,
   },
   formCard: {
-    borderRadius: 24,
+    borderRadius: 20,
     padding: Spacing.four,
     gap: Spacing.three,
     shadowColor: "#000",
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
@@ -312,15 +317,13 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    marginBottom: 2,
   },
   input: {
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    borderWidth: 1,
-    borderColor: "transparent",
+    borderWidth: 0,
   },
   otpInput: {
     textAlign: "center",
@@ -337,11 +340,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
     paddingVertical: 16,
   },
   primaryButtonText: {
     fontSize: 16,
+    fontWeight: "600",
   },
   pressed: {
     opacity: 0.85,
