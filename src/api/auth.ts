@@ -58,6 +58,19 @@ export interface MerchantDevice {
   unlinkedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  apiUrl?: string;
+  soapUrl?: string;
+  timeout?: number;
+  retryAttempts?: number;
+  autoConnect?: boolean;
+  autoPrint?: boolean;
+  soundEffects?: boolean;
+  offlineMode?: boolean;
+  biometricAuth?: boolean;
+  sessionTimeout?: number;
+  printerName?: string;
+  paperSize?: string;
+  receiptCopies?: number;
 }
 
 export interface POSDevice {

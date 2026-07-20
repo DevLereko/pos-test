@@ -66,6 +66,7 @@ export default function VerifyDeviceScreen() {
 
       const deviceConfig = {
         deviceUuid: response.deviceUuid,
+        deviceId: deviceInfo.deviceId,
         merchantId: response.merchantId,
         terminalId: response.terminalId,
         deviceName: response.deviceName,

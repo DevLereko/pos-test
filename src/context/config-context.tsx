@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/context/theme-context";
+import { authApi } from "@/api/auth";
 
 export interface MerchantConfig {
   id: string;
@@ -9,6 +10,10 @@ export interface MerchantConfig {
   phoneNumber: string;
   email: string;
   address: string;
+  code?: string;
+  location?: string;
+  district?: string;
+  businessType?: string;
 }
 
 export interface ServerConfig {
@@ -45,25 +50,27 @@ interface ConfigContextType {
   resetConfig: () => Promise<void>;
   isLoading: boolean;
   saveConfig: () => Promise<void>;
+  loadConfigFromDevice: () => Promise<void>;
+  refreshConfig: () => Promise<void>;
 }
 
 const defaultConfig: AppConfig = {
   merchant: {
-    id: "MERC-001",
-    name: "Highveld Butchery",
-    terminalId: "012186",
-    phoneNumber: "+266 5885 1015",
-    email: "info@highveldbutchery.co.ls",
-    address: "Naleli, Maseru 100",
+    id: "",
+    name: "",
+    terminalId: "",
+    phoneNumber: "",
+    email: "",
+    address: "",
   },
   server: {
-    apiUrl: "https://api.vodacom.co.ls/pos",
-    soapUrl: "http://10.0.44.100:8086",
+    apiUrl: "",
+    soapUrl: "",
     timeout: 30000,
     retryAttempts: 3,
   },
   printer: {
-    name: "InnerPrinter",
+    name: "",
     autoConnect: true,
     paperSize: "58mm",
     copies: 1,
@@ -85,32 +92,130 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [isLoading, setIsLoading] = useState(true);
+  const [configVersion, setConfigVersion] = useState(0);
   const { setTheme } = useTheme();
 
-  const loadConfig = async () => {
+  const loadConfigFromStorage = useCallback(async () => {
     try {
       const savedConfig = await AsyncStorage.getItem("pos_config");
       if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
-        setConfig(parsed);
-        // Apply dark mode preference
+        setConfig(prev => ({ ...prev, ...parsed }));
         if (parsed.preferences?.darkMode !== undefined) {
           setTheme(parsed.preferences.darkMode ? "dark" : "light");
         }
       }
     } catch (error) {
-      console.error("Failed to load config:", error);
+      console.error("Failed to load saved config:", error);
+    }
+  }, [setTheme]);
+
+  const loadConfigFromDevice = useCallback(async () => {
+    try {
+      const deviceConfigStr = await AsyncStorage.getItem("deviceConfig");
+      const merchantInfoStr = await AsyncStorage.getItem("selectedMerchant");
+
+      if (!deviceConfigStr) {
+        console.log("No device config found");
+        setIsLoading(false);
+        return;
+      }
+
+      const deviceConfig = JSON.parse(deviceConfigStr);
+      const merchantInfo = merchantInfoStr ? JSON.parse(merchantInfoStr) : null;
+
+      console.log("Loading config from device:", { deviceConfig, merchantInfo });
+
+      let apiUrl = deviceConfig.apiUrl || "";
+      let soapUrl = deviceConfig.soapUrl || "";
+      let timeout = deviceConfig.timeout || 30000;
+      let retryAttempts = deviceConfig.retryAttempts || 3;
+      let printerName = deviceConfig.printerName || "InnerPrinter";
+      let autoConnect = deviceConfig.autoConnect ?? true;
+      let paperSize = deviceConfig.paperSize || "58mm";
+      let copies = deviceConfig.receiptCopies || 1;
+      let autoPrint = deviceConfig.autoPrint ?? true;
+      let soundEffects = deviceConfig.soundEffects ?? true;
+      let offlineMode = deviceConfig.offlineMode ?? false;
+      let biometricAuth = deviceConfig.biometricAuth ?? false;
+      let sessionTimeout = deviceConfig.sessionTimeout || 5;
+
+      if ((deviceConfig.deviceId || deviceConfig.id) && !apiUrl) {
+        try {
+          const deviceIdForLookup = deviceConfig.deviceId || deviceConfig.id;
+          const fullDevice = await authApi.getDeviceById(deviceIdForLookup);
+          apiUrl = fullDevice.apiUrl || "";
+          soapUrl = fullDevice.soapUrl || "";
+          timeout = fullDevice.timeout || timeout;
+          retryAttempts = fullDevice.retryAttempts || retryAttempts;
+          printerName = fullDevice.printerName || printerName;
+          autoConnect = fullDevice.autoConnect ?? autoConnect;
+          paperSize = fullDevice.paperSize || paperSize;
+          copies = fullDevice.receiptCopies || copies;
+          autoPrint = fullDevice.autoPrint ?? autoPrint;
+          soundEffects = fullDevice.soundEffects ?? soundEffects;
+          offlineMode = fullDevice.offlineMode ?? offlineMode;
+          biometricAuth = fullDevice.biometricAuth ?? biometricAuth;
+          sessionTimeout = fullDevice.sessionTimeout || sessionTimeout;
+        } catch (err) {
+          console.warn("Could not fetch device details:", err);
+        }
+      }
+
+      const loadedConfig: AppConfig = {
+        merchant: {
+          id: merchantInfo?.id || deviceConfig.merchantId || "",
+          name: merchantInfo?.name || deviceConfig.deviceName || "",
+          terminalId: deviceConfig.terminalId || "",
+          phoneNumber: merchantInfo?.phoneNumber || "",
+          email: merchantInfo?.email || "",
+          address: merchantInfo?.location || merchantInfo?.address || "",
+          code: merchantInfo?.code,
+          location: merchantInfo?.location,
+          district: merchantInfo?.district,
+          businessType: merchantInfo?.businessType,
+        },
+        server: {
+          apiUrl,
+          soapUrl,
+          timeout,
+          retryAttempts,
+        },
+        printer: {
+          name: printerName,
+          autoConnect,
+          paperSize,
+          copies,
+        },
+        preferences: {
+          autoPrint,
+          soundEffects,
+          offlineMode,
+          darkMode: false,
+          biometricAuth,
+          sessionTimeout,
+        },
+      };
+
+      setConfig(loadedConfig);
+      console.log("Config loaded successfully from device:", loadedConfig);
+    } catch (error) {
+      console.error("Failed to load config from device:", error);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Load config from storage on mount
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-  useEffect(() => {
-    loadConfig();
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  const refreshConfig = useCallback(async () => {
+    setConfigVersion(v => v + 1);
+    await loadConfigFromDevice();
+    await loadConfigFromStorage();
+  }, [loadConfigFromDevice, loadConfigFromStorage]);
+
+  useEffect(() => {
+    loadConfigFromDevice();
+    loadConfigFromStorage();
+  }, [loadConfigFromDevice, loadConfigFromStorage, configVersion]);
 
   const saveConfig = async () => {
     try {
@@ -125,7 +230,6 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = { ...config, ...newConfig };
     setConfig(updated);
 
-    // If dark mode preference changed, update theme
     if (newConfig.preferences?.darkMode !== undefined) {
       setTheme(newConfig.preferences.darkMode ? "dark" : "light");
     }
@@ -140,7 +244,7 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <ConfigContext.Provider
-      value={{ config, updateConfig, resetConfig, isLoading, saveConfig }}
+      value={{ config, updateConfig, resetConfig, isLoading, saveConfig, loadConfigFromDevice, refreshConfig }}
     >
       {children}
     </ConfigContext.Provider>

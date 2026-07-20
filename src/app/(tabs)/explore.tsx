@@ -227,7 +227,7 @@ export default function ExploreScreen() {
                     { color: colors.textSecondary },
                   ]}
                 >
-                  Always confirm the customer's number before processing
+                  Always confirm the customer&apos;s number before processing
                 </ThemedText>
               </View>
             </View>

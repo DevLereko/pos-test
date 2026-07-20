@@ -37,7 +37,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
-  const { config } = useConfig();
+  const { config, loadConfigFromDevice } = useConfig();
   const { user, deviceConfig } = useAuth();
   const { selectedMerchant } = useMerchant();
   const isDark = useColorScheme() === "dark";
@@ -64,6 +64,12 @@ export default function HomeScreen() {
   const merchantId = selectedMerchant?.id || config?.merchant?.id;
   const deviceId = deviceConfig?.id;
 
+  useEffect(() => {
+    if (deviceConfig?.id || selectedMerchant?.id) {
+      loadConfigFromDevice();
+    }
+  }, [deviceConfig, selectedMerchant, loadConfigFromDevice]);
+
   const loadRecentTransactions = async () => {
     try {
       setLoadingRecent(true);
@@ -76,7 +82,6 @@ export default function HomeScreen() {
     }
   };
 
-  // Load recent transactions
   useEffect(() => {
     if (merchantId) {
       loadRecentTransactions();

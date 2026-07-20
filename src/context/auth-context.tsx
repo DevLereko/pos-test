@@ -112,13 +112,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       } catch (deviceError) {
         console.error("❌ Failed to fetch device info:", deviceError);
-        // Don't fail the login if device fetch fails
       }
 
       setShowMerchantSelection(false);
       setIsAuthenticated(true);
 
-      // Navigate after state updates complete
       setTimeout(() => {
         router.replace("/(tabs)");
       }, 0);
