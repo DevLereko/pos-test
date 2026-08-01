@@ -1,5 +1,3 @@
-// src/services/printer.service.ts
-import { authApi } from "@/api/auth";
 import * as SecureStore from "expo-secure-store";
 
 export interface PrinterTestResult {
@@ -20,7 +18,6 @@ class PrinterService {
 
   async testPrinter(deviceId: string): Promise<PrinterTestResult> {
     try {
-      // Get device config
       const deviceConfig = await SecureStore.getItemAsync("deviceConfig");
       if (!deviceConfig) {
         return {
@@ -31,15 +28,13 @@ class PrinterService {
 
       const device = JSON.parse(deviceConfig);
 
-      // Call API to test printer
-      const result = await authApi.testPrinter(deviceId);
-
       return {
         success: true,
-        message: result.message || "Printer test successful",
+        message: "Printer test is handled directly in Settings via BLE",
         details: {
           printerName: device.printerName || "InnerPrinter",
           paperSize: device.paperSize || "58mm",
+          deviceId,
         },
       };
     } catch (error: any) {
@@ -62,7 +57,7 @@ class PrinterService {
 
       const device = JSON.parse(deviceConfig);
       return {
-        connected: true, // This would come from actual BLE connection status
+        connected: true,
         name: device.printerName || "InnerPrinter",
       };
     } catch (error) {

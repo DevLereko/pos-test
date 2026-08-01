@@ -1,12 +1,14 @@
 import { StrippedPeripheral } from "@/types/bluetooth";
 import React from "react";
 import {
-  View,
   FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
+  View,
 } from "react-native";
+import { VODACOM } from "@/constants/theme";
+import { SymbolView } from "expo-symbols";
 
 interface PeripheralListProps {
   peripherals: StrippedPeripheral[];
@@ -17,54 +19,92 @@ const PeripheralList: React.FC<PeripheralListProps> = ({
   peripherals,
   onConnect,
 }) => {
+  const printerDevices = peripherals.filter(
+    (p) =>
+      p.name?.toLowerCase().includes("printer") ||
+      p.name?.toLowerCase().includes("ipos") ||
+      p.name?.toLowerCase().includes("blue") ||
+      p.name?.toLowerCase().includes("bt"),
+  );
+
+  const displayDevices =
+    printerDevices.length > 0 ? printerDevices : peripherals;
+
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={peripherals}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => onConnect(item)} style={styles.card}>
-            <Text style={styles.title}>{item.name ?? "Unknown Device"}</Text>
-            <Text style={styles.subtitle}>
-              Local Name: {item.localName ?? "N/A"}
-            </Text>
-            <Text style={styles.info}>RSSI: {item.rssi} dBm</Text>
-            <Text style={styles.info}>ID: {item.id}</Text>
-          </TouchableOpacity>
-        )}
-      />
-    </View>
+    <FlatList
+      data={displayDevices}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.container}
+      scrollEnabled={false}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          onPress={() => onConnect(item)}
+          style={styles.card}
+          activeOpacity={0.7}
+        >
+          <View style={styles.cardContent}>
+            <View style={styles.iconContainer}>
+              <SymbolView
+                name={{ ios: "printer.fill", android: "print" }}
+                size={20}
+                tintColor={VODACOM.red}
+              />
+            </View>
+            <View style={styles.cardText}>
+              <Text style={styles.title}>{item.name || "Unknown Device"}</Text>
+              <Text style={styles.info}>{item.id}</Text>
+            </View>
+            <SymbolView
+              name={{ ios: "chevron.right", android: "arrow_forward" }}
+              size={16}
+              tintColor={VODACOM.greyDark}
+            />
+          </View>
+        </TouchableOpacity>
+      )}
+    />
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
   },
   card: {
-    backgroundColor: "#fff",
-    padding: 16,
-    marginVertical: 8,
-    borderRadius: 10,
+    backgroundColor: VODACOM.light,
+    padding: 14,
+    marginVertical: 6,
+    borderRadius: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
+  },
+  cardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: `${VODACOM.red}10`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardText: {
+    flex: 1,
   },
   title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#555",
-    marginBottom: 4,
+    fontSize: 15,
+    fontWeight: "600",
+    color: VODACOM.dark,
   },
   info: {
-    fontSize: 14,
-    color: "#333",
+    fontSize: 12,
+    color: VODACOM.greyDark,
   },
 });
 

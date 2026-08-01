@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "M-Pesa POS",
-    "slug": "merchant-pos-app",
+    "slug": "pos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-logo.png",
@@ -79,9 +79,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "f6dbc90c-683c-4b18-8709-db8767149ac6"
+        "projectId": "01f7b4ee-a9cd-4d7e-94df-15e50147f9b8"
       }
     },
-    "owner": "folol001"
+    "owner": "dahbushs-team"
   }
 }
